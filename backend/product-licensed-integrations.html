@@ -1,0 +1,682 @@
+<title>Licensed Integrations — Verilume Product Docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ink:#161B22; --slate:#5B6472; --slate-soft:#8891A0; --paper:#FFFFFF; --paper-sunk:#F4F6F9;
+  --line:#E2E6EC; --brand:#2B5FE0; --brand-soft:#EDF2FE; --confirmed:#1F8A5F; --confirmed-soft:#E9F6EF;
+  --flagged:#B8391A; --flagged-soft:#FBEAE4; --warning:#B8791A; --warning-soft:#FBF1E1;
+  --mono-bg:#0F1720; --mono-ink:#D7DEE8;
+}
+:root:not([data-theme="light"]){
+  @media (prefers-color-scheme: dark){
+    --ink:#E7EAEF; --slate:#A8B1C0; --slate-soft:#7A8393; --paper:#12161D; --paper-sunk:#191F29;
+    --line:#2A3140; --brand:#7EA0FF; --brand-soft:#1B2740; --confirmed:#4FCC93; --confirmed-soft:#122A20;
+    --flagged:#FF8A68; --flagged-soft:#2E1710; --warning:#E5AC55; --warning-soft:#2C2110;
+    --mono-bg:#0A0E14; --mono-ink:#C6CEDA;
+  }
+}
+:root[data-theme="dark"]{
+  --ink:#E7EAEF; --slate:#A8B1C0; --slate-soft:#7A8393; --paper:#12161D; --paper-sunk:#191F29;
+  --line:#2A3140; --brand:#7EA0FF; --brand-soft:#1B2740; --confirmed:#4FCC93; --confirmed-soft:#122A20;
+  --flagged:#FF8A68; --flagged-soft:#2E1710; --warning:#E5AC55; --warning-soft:#2C2110;
+  --mono-bg:#0A0E14; --mono-ink:#C6CEDA;
+}
+*{box-sizing:border-box;}
+html{-webkit-text-size-adjust:100%;}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:15.5px;line-height:1.6;}
+::selection{background:var(--brand-soft);}
+a{color:var(--brand);}
+h1,h2,h3,h4{font-family:'Source Serif 4',Georgia,serif;font-weight:600;color:var(--ink);text-wrap:balance;line-height:1.25;}
+code, .mono{font-family:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;font-size:0.87em;}
+.shell{display:grid;grid-template-columns:272px minmax(0,1fr);max-width:1280px;margin:0 auto;}
+@media (max-width:900px){.shell{grid-template-columns:1fr;} .toc{position:static !important; height:auto !important; border-right:none !important; border-bottom:1px solid var(--line);}}
+.toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:28px 20px 40px 28px;border-right:1px solid var(--line);}
+.toc-brand{font-family:'Source Serif 4',serif;font-size:15px;font-weight:600;letter-spacing:0.01em;margin-bottom:2px;}
+.toc-sub{font-size:11.5px;color:var(--slate);margin-bottom:22px;}
+.toc-group{margin-bottom:18px;}
+.toc-group-label{font-size:10.5px;font-weight:600;letter-spacing:0.09em;text-transform:uppercase;color:var(--slate-soft);margin:0 0 8px;}
+.toc a{display:block;font-size:13px;color:var(--slate);text-decoration:none;padding:5px 0 5px 10px;border-left:2px solid transparent;margin-left:-1px;}
+.toc a:hover{color:var(--ink); border-left-color:var(--line);}
+.toc a.flag::after{content:" \2691"; color:var(--flagged);}
+.toc a.home{font-weight:600;color:var(--brand);}
+.main{padding:40px 48px 120px;min-width:0;}
+@media (max-width:640px){.main{padding:28px 20px 90px;}}
+.doc-header{margin-bottom:44px;}
+.doc-kicker{font-size:11.5px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--brand);margin-bottom:10px;}
+.doc-header h1{font-size:34px;margin:0 0 12px;}
+.doc-dek{font-size:16px;color:var(--slate);max-width:62ch;margin:0 0 20px;}
+.meta-row{display:flex;flex-wrap:wrap;gap:10px 22px;font-size:12.5px;color:var(--slate-soft);padding-top:16px;border-top:1px solid var(--line);}
+.meta-row b{color:var(--slate);font-weight:600;}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;letter-spacing:0.02em;padding:3px 10px 3px 8px;border-radius:99px;white-space:nowrap;}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;flex:none;}
+.pill--confirmed{background:var(--confirmed-soft);color:var(--confirmed);}
+.pill--confirmed::before{background:var(--confirmed);}
+.pill--flagged{background:var(--flagged-soft);color:var(--flagged);}
+.pill--flagged::before{background:var(--flagged);}
+.pill--warning{background:var(--warning-soft);color:var(--warning);}
+.pill--warning::before{background:var(--warning);}
+.pill--neutral{background:var(--paper-sunk);color:var(--slate);}
+.pill--neutral::before{background:var(--slate-soft);}
+section{margin-bottom:56px;scroll-margin-top:24px;}
+section > h2{font-size:22px;padding-bottom:12px;border-bottom:1px solid var(--line);margin:0 0 20px;display:flex;align-items:baseline;gap:12px;justify-content:space-between;}
+section > h2 .num{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--slate-soft);font-weight:400;}
+h3{font-size:16.5px;margin:28px 0 10px;}
+h4{font-size:14px;margin:20px 0 8px;color:var(--slate);}
+p{margin:0 0 14px;max-width:72ch;}
+ul,ol{margin:0 0 14px;padding-left:22px;max-width:70ch;}
+li{margin-bottom:5px;}
+.lede{font-size:15px;color:var(--slate);max-width:72ch;}
+.card{border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:16px 0;background:var(--paper-sunk);}
+.card--confirmed{background:var(--confirmed-soft);border-color:color-mix(in srgb, var(--confirmed) 30%, var(--line));}
+.card--flagged{background:var(--flagged-soft);border-color:color-mix(in srgb, var(--flagged) 30%, var(--line));}
+.card--warning{background:var(--warning-soft);border-color:color-mix(in srgb, var(--warning) 30%, var(--line));}
+.card-title{display:flex;align-items:center;gap:10px;font-weight:600;font-size:14px;margin-bottom:8px;color:var(--ink);}
+.card p:last-child{margin-bottom:0;}
+.card .cite{font-size:12px;color:var(--slate-soft);margin-top:8px;}
+.finding-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin:20px 0 8px;}
+.finding-tile{border:1px solid var(--line);border-radius:10px;padding:16px 18px;}
+.finding-tile .pill{margin-bottom:10px;}
+.finding-tile h4{margin:0 0 6px;font-size:13.5px;color:var(--ink);}
+.finding-tile p{font-size:13px;color:var(--slate);margin:0;}
+.flow{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:18px 0 24px;}
+.flow-step{display:grid;grid-template-columns:40px 1fr;gap:14px;padding:16px 20px;border-bottom:1px solid var(--line);}
+.flow-step:last-child{border-bottom:none;}
+.flow-step:nth-child(odd){background:var(--paper-sunk);}
+.flow-num{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--brand);font-weight:500;padding-top:2px;}
+.flow-step h4{margin:0 0 4px;font-size:14px;color:var(--ink);}
+.flow-step p{margin:0;font-size:13.5px;color:var(--slate);}
+.flow-step .endpoint{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--slate);background:var(--paper);border:1px solid var(--line);padding:1px 7px;border-radius:5px;margin-top:6px;}
+.table-wrap{overflow-x:auto;margin:16px 0 24px;border:1px solid var(--line);border-radius:10px;}
+table{border-collapse:collapse;width:100%;font-size:13px;min-width:560px;}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top;}
+thead th{background:var(--paper-sunk);font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:var(--slate);white-space:nowrap;}
+tbody tr:last-child td{border-bottom:none;}
+td .mono{color:var(--slate);}
+.env-list{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 20px;}
+.env-badge{font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--mono-bg);color:var(--mono-ink);padding:5px 10px;border-radius:6px;}
+pre{background:var(--mono-bg);color:var(--mono-ink);border-radius:10px;padding:16px 18px;overflow-x:auto;font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.6;margin:14px 0 20px;}
+hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+@media (max-width:700px){.two-col{grid-template-columns:1fr;}}
+.foot{margin-top:60px;padding-top:20px;border-top:1px solid var(--line);font-size:12px;color:var(--slate-soft);}
+.product-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin:20px 0 8px;}
+.product-card{border:1px solid var(--line);border-radius:12px;padding:20px 22px;background:var(--paper-sunk);text-decoration:none;display:block;transition:border-color .15s;}
+.product-card:hover{border-color:var(--brand);}
+.product-card.disabled{opacity:0.55;pointer-events:none;}
+.product-card .pc-group{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--slate-soft);margin-bottom:8px;}
+.product-card h3{font-size:17px;margin:0 0 8px;color:var(--ink);}
+.product-card p{font-size:13px;color:var(--slate);margin:0 0 12px;max-width:none;}
+.group-block{margin-bottom:48px;}
+.group-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px;}
+.group-num{font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--brand);}
+.group-head h2{font-size:20px;margin:0;border:none;padding:0;}
+.group-dek{font-size:13.5px;color:var(--slate);margin:0 0 16px;max-width:70ch;}
+</style>
+
+<div class="shell">
+  
+  <nav class="toc">
+    <div class="toc-brand">Verilume — Internal Product Docs</div>
+    <div class="toc-sub">Licensed Integrations</div>
+    <a class="home" href="verilume-product-docs.html">&larr; All Products</a>
+
+    <div class="toc-group" style="margin-top:18px;">
+      <p class="toc-group-label">Overview</p>
+      <a href="#overview">Product summary</a>
+      <a href="#findings">Headline findings</a>
+    </div>
+
+    <div class="toc-group">
+      <p class="toc-group-label">Licensed vendors</p>
+      <a href="#llm">LLM providers</a>
+      <a href="#comms">Communications (SMS / email)</a>
+      <a href="#crm-analytics">CRM &amp; analytics</a>
+      <a href="#setup-procedures">Client setup procedures</a>
+      <a href="#infra">Infrastructure</a>
+    </div>
+
+    <div class="toc-group">
+      <p class="toc-group-label">Not licensed today</p>
+      <a href="#not-built" class="flag">Demo-only &amp; unconfirmed vendors</a>
+    </div>
+
+    <div class="toc-group">
+      <p class="toc-group-label">Product ops</p>
+      <a href="#status-endpoint">Status endpoint</a>
+      <a href="#voice">Voice — ElevenLabs Agents</a>
+      <a href="#gaps" class="flag">Known gaps &amp; open items</a>
+      <a href="#roadmap">Suggested next steps</a>
+    </div>
+  </nav>
+
+  <main class="main">
+
+    <header class="doc-header" id="overview">
+      <div class="doc-kicker">Product Documentation · Verilume</div>
+      <h1>Licensed Integrations</h1>
+      <p class="doc-dek">
+        Every third-party vendor the platform is wired to — what it's for, what
+        credential turns it on, and what happens when that credential isn't set.
+        Grounded directly in <code>GET /api/ops/integration-status</code>, the
+        real staff-facing registry already built into the Ops Console — this
+        document explains that registry rather than duplicating a second,
+        driftable copy of it.
+      </p>
+      <div class="meta-row">
+        <span><b>Owner</b> Todd Brown</span>
+        <span><b>System</b> verilume.ai — <code>backend/server.js</code></span>
+        <span><b>Verified against</b> production code, 2026-09-12</span>
+        <span><b>Status</b> Live in production</span>
+      </div>
+    </header>
+
+    <section id="findings">
+      <h2><span>Headline findings</span><span class="num">requested this cycle</span></h2>
+      <p class="lede">
+        What was explicitly asked: a single home for every licensed vendor,
+        separate from the products that consume them. Checked against the real
+        status endpoint rather than assumed from planning docs.
+      </p>
+      <div class="finding-grid">
+        <div class="finding-tile">
+          <span class="pill pill--confirmed">Confirmed solid</span>
+          <h4>One real status registry already exists</h4>
+          <p><code>GET /api/ops/integration-status</code> reports 7 vendor
+          integrations by presence-of-env-var, never secret values — this doc is
+          the narrative layer on top of it.</p>
+        </div>
+        <div class="finding-tile">
+          <span class="pill pill--flagged">Not integrated</span>
+          <h4>No Meta (Facebook/Instagram) connector</h4>
+          <p>No Meta-related environment variable, API call, or field exists
+          anywhere in <code>server.js</code> today. If this is planned, it's not
+          started.</p>
+        </div>
+        <div class="finding-tile">
+          <span class="pill pill--warning">Metadata only</span>
+          <h4>Snowflake is a data-capture field, not a connector</h4>
+          <p><code>accounts.analyticsSnowflakeAccountId</code> and two sibling
+          fields exist so staff can record a client's Snowflake details, but no
+          code actually connects to Snowflake. Explicitly commented in
+          <code>server.js</code> as unbuilt engineering work.</p>
+        </div>
+        <div class="finding-tile">
+          <span class="pill pill--neutral">Working as designed</span>
+          <h4>Graceful fallback on every vendor</h4>
+          <p>Every integration below has an honest non-vendor fallback (template
+          draft, on-screen code, local SQLite, null score) rather than a hard
+          failure when unconfigured.</p>
+        </div>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <section id="llm">
+      <h2><span>LLM providers</span><span class="num">&sect; 01</span></h2>
+      <p class="lede">
+        Anthropic is the platform default for every AI surface. The four
+        additional vendors are panel candidates for Copywriting's blind
+        multi-model contests only — see the Copywriting product doc for how
+        they're dispatched.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Vendor</th><th>Role</th><th>Env var</th><th>Default model</th></tr></thead>
+          <tbody>
+            <tr><td>Anthropic (Claude)</td><td>Platform default — copywriting, AI relevance/compliance scoring</td><td class="mono">ANTHROPIC_API_KEY</td><td class="mono">claude-sonnet-4-5</td></tr>
+            <tr><td>OpenAI (GPT)</td><td>Copywriting contest panel candidate</td><td class="mono">OPENAI_API_KEY</td><td class="mono">gpt-4o</td></tr>
+            <tr><td>Google (Gemini)</td><td>Copywriting contest panel candidate</td><td class="mono">GEMINI_API_KEY</td><td class="mono">gemini-3.6-flash</td></tr>
+            <tr><td>xAI (Grok)</td><td>Copywriting contest panel candidate</td><td class="mono">XAI_API_KEY</td><td class="mono">grok-4.6</td></tr>
+            <tr><td>Perplexity</td><td>Copywriting contest panel candidate</td><td class="mono">PERPLEXITY_API_KEY</td><td class="mono">sonar-pro</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card card--warning">
+        <div class="card-title">&#9888; Model churn is a real operational cost</div>
+        <p>Confirmed via an actual incident this cycle: Google retired
+        <code>gemini-2.5-flash</code>, caught only via a live 404 during
+        unrelated work — no monitoring exists on a vendor deprecating a model.
+        See &sect; Known gaps.</p>
+      </div>
+    </section>
+
+    <section id="comms">
+      <h2><span>Communications — SMS &amp; email</span><span class="num">&sect; 02</span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Vendor</th><th>Used for</th><th>Env vars</th><th>Fallback when unconfigured</th></tr></thead>
+          <tbody>
+            <tr><td>Twilio Verify</td><td>SMS verification — signup, password reset, login MFA</td><td class="mono">TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_VERIFY_SERVICE_SID</td><td>Interim on-screen code, shown once in the API response</td></tr>
+            <tr><td>Postmark</td><td>Transactional email — verification codes, notifications</td><td class="mono">POSTMARK_SERVER_TOKEN, POSTMARK_FROM_EMAIL</td><td>Same interim on-screen-code convention as SMS</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Every verification flow, including login MFA, works end to end either
+      way — see Registration &amp; Account Management for the full flow.</p>
+    </section>
+
+    <section id="crm-analytics">
+      <h2><span>CRM &amp; analytics</span><span class="num">&sect; 03</span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Vendor</th><th>Used for</th><th>Env vars</th><th>Fallback when unconfigured</th></tr></thead>
+          <tbody>
+            <tr><td>HubSpot</td><td>Lead sync (server-side only, browser never talks to HubSpot directly)</td><td class="mono">HUBSPOT_ACCESS_TOKEN</td><td>Lead is always persisted locally regardless (<code>GET /api/leads</code>)</td></tr>
+            <tr><td>Google Analytics 4</td><td>Live GA4 Data API reporting for connected accounts</td><td class="mono">GA4_SERVICE_ACCOUNT_KEY_JSON</td><td>Reporting stays not-configured for that account</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title">Snowflake — metadata capture only, not a connector</div>
+        <p><code>accounts.analyticsSnowflakeAccountId</code>,
+        <code>analyticsSnowflakeShareName</code>, and
+        <code>analyticsSnowflakeContact</code> let staff record a client's
+        Snowflake share details for future use. No live Snowflake connector
+        exists in the code today — building one is open engineering work, not a
+        credential away.</p>
+      </div>
+    </section>
+
+    <section id="setup-procedures">
+      <h2><span>Client analytics setup procedures</span><span class="num">&sect; 04</span></h2>
+      <p class="lede">
+        The step-by-step "what Verilume needs to do" vs. "what the client's
+        team needs to grant" for every analytics/campaign-data pathway a
+        client can choose on their Portal's Analytics Integrations step.
+        This used to live only in a standalone deliverable
+        (<code>Verilume-Integration-Setup-Procedure-2026-08-25.docx</code>,
+        produced 2026-08-25 for one-off client walkthroughs) — folded in here
+        so it's the living, expandable reference instead of a file that goes
+        stale the moment a platform's build status changes. Design rationale
+        and sequencing recommendations live in
+        <code>cxmedia-data-integration-architecture.md</code>; this section
+        is the operational how-to on top of that thinking.
+      </p>
+      <div class="card">
+        <div class="card-title">Where the client-facing request actually starts</div>
+        <p>Every pathway below is first chosen by the client on Portal's
+        Analytics Integrations step (<code>#step-analyticsSetup</code>),
+        which persists their choice and any details they provide via
+        <code>POST /api/accounts/:id/analytics-integration</code>. Submitting
+        that form only records a <b>request</b> — <code>analyticsStatus</code>
+        advances to <code>'requested'</code>, never straight to
+        <code>'connected'</code>. A staff member then has to actually work
+        the steps in this section by hand (today, for every pathway except
+        GA4's credential step, which is code-driven once configured) — the
+        Ops Console's "Media &amp; analytics connections" module is where
+        that follow-through gets tracked.</p>
+      </div>
+
+      <h3>Google Analytics 4 (GA4)</h3>
+      <p>Website behavior data — sessions, users, conversions, channel/traffic-source
+      breakdown. The lightest-weight of the four platform integrations to set
+      up, and the only one with a real, working connector today.</p>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">What Verilume does</div>
+          <ol>
+            <li>Hold a Google Cloud project + service account with the GA4
+            Data API enabled (one-time, org-wide — not per client).</li>
+            <li>Generate that service account's JSON key and set it as
+            <code class="mono">GA4_SERVICE_ACCOUNT_KEY_JSON</code> in
+            production.</li>
+            <li>Record the client's GA4 Account ID and Property ID once
+            provided (captured directly on the Analytics Integrations form).</li>
+          </ol>
+        </div>
+        <div class="card">
+          <div class="card-title">What the client's team grants</div>
+          <ol>
+            <li>In GA4's own Property Access Management, add Verilume's
+            service account email as a <b>Viewer</b> on the property to be
+            reported on.</li>
+            <li>Provide the GA4 Account ID and Property ID (visible in their
+            own GA4 Admin settings).</li>
+          </ol>
+        </div>
+      </div>
+      <p class="cite">Auth model: single per-property Viewer grant &middot;
+      Typical lead time: same-day once the client actions the grant &mdash;
+      no approval process on either side &middot; Build status:
+      <span class="pill pill--warning">Connector built, dormant</span>
+      real GA4 Data API connector exists (<code>GET /api/accounts/:id/ga4-report</code>),
+      but no production <code class="mono">GA4_SERVICE_ACCOUNT_KEY_JSON</code>
+      credential is set yet, so every account correctly reads
+      <code>not_configured</code> today.</p>
+      <div class="card">
+        <div class="card-title">Stored daily history (added 2026-11-26)</div>
+        <p>Beyond the live 30-day report, a client can switch on <b>Historical website data</b> in Train the Brain (Connect a Data Source). Verilume then pulls 25 months of daily GA4 data once, and a fresh day every morning, Eastern time, on Railway. Six optional detail sets add UTM detail (utm_id, term, content), key events by name, ecommerce, engagement depth, landing pages, and device and location. Same Viewer grant on the client's property; nothing is written to their analytics. GA4 history starts when the client's property did, and the BigQuery export is not retroactive, so linking it early matters. Details and tables are in Data Uploads &amp; Integrity, section 05c.</p>
+        <p class="cite">Build status: <span class="pill pill--warning">Built, not yet verified against real GA4</span> tested with a stubbed response only.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Meta and Google Ads adapters (planned)</div>
+        <p>Meta needs a Business app, Business Verification and App Review for ads_read (the slowest step, roughly one to two weeks). Google Ads needs a developer token and OAuth, plus client read access to the account or manager account. Neither is built; they feed the same daily table once approved.</p>
+      </div>
+
+      <h3>Google Search Console</h3>
+      <p>Organic search performance for the client's own website: the searches that show their site, clicks, impressions, average position, the pages that earn them, indexing problems, and Google's AI report. It feeds the Search Everywhere page. It is free to the client and needs no license.</p>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">What Verilume does</div>
+          <ol>
+            <li><b>Today:</b> accept the CSV exports the client downloads from Search Console. Each file is recognized by its first column (Queries, Pages, Chart, Countries, Devices, Search appearance, Google AI, Page indexing, Links), shown in a preview, and saved only after the client confirms. No credential is held.</li>
+            <li>Confirm the client's brand names with the client before any brand and non-brand split is calculated.</li>
+            <li><b>Planned, not built:</b> a Google Cloud project with the Search Console API enabled, one service account for Verilume, and a weekly pull on the Monday early-morning sweep so results are ready by 8:00 AM. Pulled data would replace uploaded files for the same dates and never overwrite team decisions (brand names, group matches, priorities).</li>
+          </ol>
+        </div>
+        <div class="card">
+          <div class="card-title">What the client's team grants</div>
+          <ol>
+            <li><b>Today:</b> view access to their Search Console property, then Export, Download CSV on each report. Leave the file names as Google gives them.</li>
+            <li><b>For the planned automatic pull:</b> in Search Console, Settings, Users and permissions, add Verilume's service account email as a user. Restricted permission is enough because Verilume only reads.</li>
+            <li>Tell Verilume which property to read: a domain property or a URL-prefix property, exactly as it appears in Search Console.</li>
+          </ol>
+        </div>
+      </div>
+      <p class="cite">Auth model: single per-property user grant (same shape as GA4) &middot;
+      Typical lead time: same-day once the client adds the user &middot;
+      Why automate: the in-product export is capped at 1,000 rows per report, and the API returns many more, so the same page would see far more of the client's searches &middot;
+      Build status: <span class="pill pill--warning">Upload built; connector not built</span>
+      uploads feed the Search Everywhere page today (tables <code class="mono">gsc_uploads</code>, <code class="mono">gsc_rows</code>, <code class="mono">gsc_daily</code>). Whether Google's AI report is available through the API is not confirmed; until it is, that report stays an upload. Client training: <a href="training/Verilume-Search-Everywhere-Training.pdf" target="_blank" rel="noopener">Search Everywhere training PDF</a>.</p>
+
+      <h3>Google Ads</h3>
+      <p>Campaign/ad group/keyword-level spend, clicks, and conversions from
+      a client's own Google Ads account.</p>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">What Verilume does</div>
+          <ol>
+            <li>Apply for and hold a Google Ads API Developer Token
+            (Verilume-side, one-time — not per client).</li>
+            <li>Build the OAuth2 read connector against the Google Ads API
+            (not started).</li>
+          </ol>
+        </div>
+        <div class="card">
+          <div class="card-title">What the client's team grants</div>
+          <ol>
+            <li>Grant Verilume's OAuth app read access to their Google Ads
+            account (or their MCC, if they manage multiple accounts under
+            one).</li>
+          </ol>
+        </div>
+      </div>
+      <p class="cite">Auth model: OAuth2 + Verilume-side Developer Token
+      &middot; Typical lead time: the client-side grant itself is fast; the
+      real gate is Verilume's own one-time Developer Token approval (Google's
+      process, days to weeks) &middot; Build status:
+      <span class="pill pill--flagged">Not built</span> no code, OAuth flow,
+      or account field exists yet.</p>
+
+      <h3>Meta (Facebook/Instagram)</h3>
+      <p>Campaign/ad-set/ad-level spend, impressions, reach, and Meta's own
+      attributed conversions.</p>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">What Verilume does</div>
+          <ol>
+            <li>Register and maintain a Meta Business app (Verilume-side,
+            one-time).</li>
+            <li>Complete Meta's App Review for <code class="mono">ads_read</code>
+            at scale — the slower step, not the query logic.</li>
+            <li>Generate a long-lived System User access token per client ad
+            account once the connector exists (not started).</li>
+          </ol>
+        </div>
+        <div class="card">
+          <div class="card-title">What the client's team grants</div>
+          <ol>
+            <li>Add Verilume's System User to their Business Manager.</li>
+            <li>Grant that System User <code class="mono">ads_read</code>
+            permission on the specific ad account(s) to be reported on.</li>
+          </ol>
+        </div>
+      </div>
+      <p class="cite">Auth model: Meta Business app + per-account System User
+      token, <code class="mono">ads_read</code> &middot; Typical lead time:
+      slowest of the four &mdash; Meta's App Review realistically runs 1-2+
+      weeks &middot; Build status: <span class="pill pill--flagged">Not built</span>
+      no Meta-related environment variable, API call, or account field
+      exists anywhere in <code>server.js</code> today.</p>
+
+      <h3>Snowflake (Secure Data Share)</h3>
+      <p>The preferred pathway for any client who already runs a Fivetran
+      &rarr; Snowflake stack &mdash; one read-only connection covers whatever
+      source systems already flow into their warehouse, instead of Verilume
+      building a bespoke connector per ad platform.</p>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">What Verilume does</div>
+          <ol>
+            <li>Build the read-only Snowflake client/driver connector
+            (not started &mdash; today this step is metadata capture only).</li>
+            <li>Record the account identifier, Secure Data Share name, and
+            data-team contact the client provides (already captured on the
+            Analytics Integrations form).</li>
+          </ol>
+        </div>
+        <div class="card">
+          <div class="card-title">What the client's team grants</div>
+          <ol>
+            <li>Provision a <b>read-only</b> Secure Data Share (or equivalent
+            read-only role) &mdash; never full warehouse access &mdash;
+            exposing whichever views their own data team curates (campaign
+            spend/impressions/conversions by channel/date/segment, or
+            however they've already normalized it).</li>
+            <li>Provide the Snowflake account identifier, the Secure Data
+            Share name, and a data-team contact for schema questions.</li>
+          </ol>
+        </div>
+      </div>
+      <p class="cite">Auth model: read-only Secure Data Share, scoped by the
+      client's own data team &middot; Typical lead time: depends entirely on
+      the client's data team's own availability &mdash; this is their
+      infrastructure work, not a Verilume approval step &middot; Build
+      status: <span class="pill pill--warning">Metadata capture only</span>
+      the three fields persist a real request; no live connector exists in
+      code (see &sect; 03 above and the roadmap in &sect; 09).</p>
+
+      <h3>Google Sheets (client-owned)</h3>
+      <p>The lightest-weight fallback for a client with neither a warehouse
+      nor an appetite yet for a platform-API integration &mdash; a
+      client-maintained spreadsheet of their own campaign data that Verilume
+      reads from. Distinct from Verilume's own internal per-account Sheets
+      workbook (an unrelated, already-built backend detail &mdash; see
+      <code>cxmedia-data-integration-architecture.md</code> &sect; 8 for the
+      naming disambiguation).</p>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">What Verilume does</div>
+          <ol>
+            <li>Document an agreed column/tab schema for the client to
+            populate.</li>
+            <li>Build a Google Sheets API reader against that schema (not
+            started).</li>
+          </ol>
+        </div>
+        <div class="card">
+          <div class="card-title">What the client's team grants</div>
+          <ol>
+            <li>Share their designated Sheet (view/read access) with
+            Verilume's connector once it exists.</li>
+            <li>Keep it updated with current campaign data in the agreed
+            format &mdash; the real risk on this pathway is staleness, not
+            setup friction.</li>
+          </ol>
+        </div>
+      </div>
+      <p class="cite">Auth model: Google Sheets API, read access to one
+      client-owned Sheet &middot; Typical lead time: fastest to set up in
+      principle &mdash; entirely dependent on the client actually keeping it
+      current &middot; Build status: <span class="pill pill--flagged">Not built</span>
+      the Analytics Integrations form captures free-text notes for this
+      pathway only; no reader exists yet.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Pathway</th><th>Auth model</th><th>Typical lead time</th><th>Build status</th></tr></thead>
+          <tbody>
+            <tr><td>Snowflake</td><td>Read-only Secure Data Share</td><td>Client data-team dependent</td><td>Metadata capture only</td></tr>
+            <tr><td>GA4</td><td>Service-account Viewer grant</td><td>Same-day</td><td>Connector built, dormant on credential</td></tr>
+            <tr><td>Google Ads</td><td>OAuth2 + Developer Token</td><td>Days-weeks (Verilume's one-time token approval)</td><td>Not built</td></tr>
+            <tr><td>Meta</td><td>Business app + System User, <span class="mono">ads_read</span></td><td>1-2+ weeks (App Review)</td><td>Not built</td></tr>
+            <tr><td>Google Sheets</td><td>Sheets API, single-Sheet read grant</td><td>Fastest setup, ongoing staleness risk</td><td>Not built</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="lede">Sequencing guidance, per the architecture doc: steer a
+      warehouse-equipped client to Snowflake first &mdash; it's the only
+      pathway that covers every upstream source system in one connection.
+      For a client without a warehouse, GA4 first (lightest auth, free,
+      broadest applicability), then Meta, then Google Ads; Google Sheets is
+      the last-resort fallback when nothing else fits yet. Adobe Analytics
+      and SA360/DV360 are named and scoped in the architecture doc but
+      deliberately excluded from this section &mdash; narrower audiences,
+      lower build priority.</p>
+    </section>
+
+    <section id="infra">
+      <h2><span>Infrastructure</span><span class="num">&sect; 05</span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Vendor / service</th><th>Used for</th><th>Env vars</th><th>Fallback when unconfigured</th></tr></thead>
+          <tbody>
+            <tr><td>Postgres (Supabase-shaped)</td><td>Production database backend</td><td class="mono">DATABASE_URL</td><td>Local SQLite file — fine for a single dev/demo instance, not for multiple concurrent serverless instances</td></tr>
+            <tr><td>Cloudmersive</td><td>Cloud malware scanning for uploads</td><td class="mono">CLOUDMERSIVE_API_KEY</td><td>Only used when no local <code>clamscan</code> binary is available in this environment</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <section id="not-built">
+      <h2><span>Not licensed today — demo-only</span><span class="num">&sect; 06 — for product awareness</span></h2>
+      <p class="lede">
+        These aren't behind a missing credential — no vendor is wired at all.
+        Setting an env var would not turn them on; they need real build work.
+      </p>
+      <div class="card card--flagged">
+        <div class="card-title">&#9873; Portal Enterprise — live external research &amp; quant/scenario modeling</div>
+        <p>Gated to the Enterprise tier in <code>portal.html</code>, but the
+        upgrade prompt is a demo toggle (<code>cmpSimulateEnterpriseDemo()</code>),
+        not a live capability.</p>
+      </div>
+      <div class="card card--flagged">
+        <div class="card-title">&#9873; Portal Enterprise — Collaboration multi-skill router</div>
+        <p>Same demo-only gate — the request-building UI is real, the actual
+        cross-function routing is not.</p>
+      </div>
+      <div class="card card--flagged">
+        <div class="card-title">&#9873; Portal Enterprise — Search Optimization / PR &amp; Corp Comm monitoring</div>
+        <p>Same demo-only gate — no live SEO/AEO/GEO or press-monitoring vendor
+        is connected yet. Update 2026-10-04: Reputation Monitoring now has a weekly
+        Perplexity and GDELT sweep as the basic service in every tier; Brandwatch,
+        Meltwater and Mention remain marketplace options. See the Copywriting
+        product doc decision log.</p>
+      </div>
+      <div class="card card--warning">
+        <div class="card-title">&#9873; Search Everywhere beyond Google — planned sources, not built</div>
+        <p>Search Everywhere is the program for organic visibility across Google, AI answers and communities. Google Search Console is its first and only connected source today. Two further source types are planned and are not built or measured: <b>AI answer visibility</b> (whether the brand and its products are named in assistant and answer-engine responses to the questions in the Questions list, and its share against a competitor set) and <b>community share</b> (Reddit and similar forums: where the category is discussed, which questions go unanswered, and the brand's share of the conversation). Both must come through a licensed provider or an official API; no scraping. Neither has a provider chosen yet. Choosing the first provider for each, and the access terms, is the next step and needs a sketch before any build.</p>
+      </div>
+      <div class="card card--warning">
+        <div class="card-title">&#9873; Google Search Console — automatic pull not built</div>
+        <p>Search Everywhere runs on files the client uploads by hand. There is no Search Console API connector, no stored credential and no weekly refresh yet. Needs: a Google Cloud project with the Search Console API enabled, a service account, and the client adding that account as a user on each property. Brand-name confirmations, group matches and priorities must survive a pull. Until then the page says "uploaded files" and shows the date each report runs through.</p>
+      </div>
+      <div class="card card--warning">
+        <div class="card-title">&#9888; Meta (Facebook/Instagram) — not found in code</div>
+        <p>No Meta-related environment variable, API call, or account field
+        exists anywhere in <code>server.js</code> today. Flagged here rather
+        than assumed, since it was named as an expected future integration.</p>
+      </div>
+    </section>
+
+    <section id="status-endpoint">
+      <h2><span>Status endpoint</span><span class="num">&sect; 07</span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Endpoint</th><th>Purpose</th><th>Note</th></tr></thead>
+          <tbody>
+            <tr><td><code>GET /api/ops/integration-status</code></td><td>Presence-only status of every licensed vendor + the demo-only list above</td><td>Staff-only, same <code>X-Admin-Token</code> gate as the rest of <code>/api/ops/*</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Already surfaced live in the Ops Console's Directory view ("Platform
+      Integration Status" panel) — this document is the narrative reference for
+      that same data, not a new source of truth.</p>
+    </section>
+
+    <section id="voice">
+      <h2><span>Voice — ElevenLabs Agents</span><span class="num">&sect; 07a</span></h2>
+      <p>Licensed (Creator plan, 2026-09-29). One shared agent (<code>agent_1901m2jpy694em5v6nkc249vs0ec</code>) with <em>Require authentication</em> on; the account is passed per session and every data call is checked against a voice token minted for that account. Webhooks call the Railway API directly. Env: <code>ELEVENLABS_API_KEY</code> (Railway), optional <code>ELEVENLABS_AGENT_ID</code> override.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Endpoint</th><th>Auth</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><code>GET /api/accounts/:id/voice/session</code></td><td>Portal session</td><td>Mints a short-lived voice token and a signed conversation URL (ElevenLabs <code>get-signed-url</code>). Returns <code>agentId</code> as a fallback only when the key is missing.</td></tr>
+            <tr><td><code>POST /api/accounts/:id/voice/ask</code></td><td><code>X-Voice-Token</code> (agent) or portal session (typed box)</td><td>The one gateway: builds an account context bundle (most-urgent campaigns by the Top 5 rule, campaigns by status, monthly KPI report, last 3 months of digital agency actuals, the current campaign's lines, product-docs hits) and returns <code>{ answer, cards, proposal, followUps }</code>. Logged to <code>account_data_access_log</code> as actor <code>voice_agent</code>.</td></tr>
+            <tr><td><code>POST /api/accounts/:id/campaign-intake</code></td><td><code>X-Voice-Token</code> or session</td><td>Unchanged; the intake mic's webhook tool.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><b>Writes never execute from voice.</b> The gateway returns a <code>proposal</code> (<code>set_creative_disposition</code>, <code>cancel_campaign</code>, <code>add_note</code>); the page renders a Confirm card; the click uses the portal session against <code>POST /api/campaigns/:id</code>.</p>
+      <p><b>Frontend:</b> shared <code>vxVoiceStart/vxVoiceStop</code> helper (signed URL, dynamic variables <code>account_id, secret__voice_token, surface, tab, campaign_id, member_name</code>, client tools <code>show_cards</code>, <code>show_proposal</code>, <code>navigate</code>). Live on: the Ask Verilume bar (mic, typed box, transcript, cards, confirm, follow-ups; the per-tab prompt chips now ask for real), the campaign-intake mic (the voice-only recommendation-cards gap is closed through <code>show_cards</code>), and the Collaboration Center AI tab. A one-time consent line precedes first mic use. Browser dictation on the Start of Day input is unchanged.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Trigger</th><th>Decision / change</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">2026-10-04</td><td>"This is another high level opportunity that could have integrations with Google Search Console, BrightEdge, Adobe, etc." (Search keywords in Train the Brain.)</td><td>Planned, not built. Search keywords works today from the account's own lists, typed entries and CSV upload. Next: Google Search Console as the free integration (queries the brand's own site already earns), then BrightEdge, Adobe and Semrush as licensed marketplace options, refreshed on the Monday early-morning sweep so results are ready by 8:00 AM. Pulled data would arrive as suggestions, never overwriting team edits. Same basic-service-plus-marketplace pattern as Reputation Monitoring.</td></tr>
+<tr><td class="mono">2026-10-05</td><td>"We need to update our partner integration guide to include Google Search Console."</td><td>Added a Google Search Console entry to the client setup procedures: what works today (CSV uploads recognized and previewed, brand names confirmed), the planned automatic pull (service account added as a user on the property, weekly Monday refresh, and why it matters: the in-product export is capped at 1,000 rows), and the open item that Google's AI report may not be available through the API. Linked to the new Search Everywhere training PDF. The planned item in the 2026-10-04 row is now partly built: the page and uploads exist, the connector does not.</td></tr>
+<tr><td class="mono">2026-10-05</td><td>"I missed the positioning. Are we limiting what we are actually doing by using Google in the title to represent a Search Everywhere program designed to build share on Reddit and LLM model results?" Then: "Go ahead and update."</td><td>Search Everywhere is now described as the program, with Google Search Console as its first connected source. AI answer visibility and community share (Reddit and similar) added as planned sources, licensed or official API only, nothing built. Training guide retitled to match (new Session 11, cover image).</td></tr>
+            <tr><td class="mono">2026-09-29</td><td>"Let's go ahead and start the final ElevenLabs integration … all voice related activations across the platform."</td><td>Built as above. Agent kept; Require authentication ON ("every user inside the Portal who has logged in can engage"); key scoped to ElevenAgents: Write; webhooks to Railway so the Vercel password gate is not involved. Verified with a mocked ElevenLabs/Anthropic backend harness and a jsdom frontend flow; not yet verified live in a browser against ElevenLabs.</td></tr>
+            <tr><td class="mono">2026-10-12</td><td>"Clicking Voice in Ask Verilume ... opens the recommended prompts and voice does not work." Then: "Let's change the Ask Verilume voice to open prompts" (answered: open only a small voice status).</td><td>Voice failed with "Your agent has authentication enabled, but no signed URL or conversation token". Cause: the <code>verilume-railway</code> key's ElevenAgents permission was Read, and the signed URL needs <strong>Write</strong>; the brief voice (text to speech only) kept working. Setting ElevenAgents back to Write fixed both. The mic no longer opens the prompts panel: a slim status pill above the bar shows connecting, listening and errors, click to dismiss, errors clear after 20 seconds. Error text now carries ElevenLabs' own reason (signed URL refusal, call close message). Checked in a browser with a mocked voice start; confirmed working live by Todd. Agent guardrails were then published by Todd (per the earlier Focus / Manipulation / Content discussion); the "Text only" override is still on and unchanged. Voice should be retested on both surfaces after any guardrail change.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="gaps">
+      <h2><span>Known gaps &amp; open items</span><span class="num">&sect; 08 — for product awareness</span></h2>
+      <div class="card card--warning">
+        <div class="card-title">&#9888; No automated alerting on vendor-model deprecation</div>
+        <p>The Gemini retirement this cycle was caught by reading a live 404
+        response body during unrelated work, not by monitoring. A vendor
+        deprecating a model or rotating an endpoint silently degrades that
+        integration until someone notices.</p>
+      </div>
+      <div class="card card--warning">
+        <div class="card-title">&#9888; No cost tracking per vendor</div>
+        <p>Integration status reports on/off, not spend. No per-vendor cost
+        dashboard exists — relevant once Licensed Integrations grows past the
+        current 7.</p>
+      </div>
+    </section>
+
+    <section id="roadmap">
+      <h2><span>Suggested next steps</span><span class="num">&sect; 09</span></h2>
+      <ol>
+        <li><strong>Add monitoring on vendor-model 404s / deprecation notices</strong> across all 5 LLM providers.</li>
+        <li><strong>Decide and scope the Meta integration</strong> if it's actually planned — nothing exists to build on top of today.</li>
+        <li><strong>Build the real Snowflake connector</strong>, or remove the metadata-capture fields if it's no longer planned.</li>
+        <li><strong>Deploy and verify the GA4 history pull on one real property</strong>, then file the Meta (Business Verification, App Review) and Google Ads (developer token) applications.</li>
+        <li><strong>Add per-vendor cost visibility</strong> once the integration count grows.</li>
+        <li><strong>Keep &sect; 04 current as each pathway's build status changes</strong> — it replaces the standalone <code>Verilume-Integration-Setup-Procedure-2026-08-25.docx</code> deliverable specifically so setup steps don't drift out of sync with the code again; update it in the same pass as any Analytics Integrations or Ops Console change, not as a separate follow-up.</li>
+      </ol>
+    </section>
+
+    <div class="foot">
+      Verilume — Internal Product Documentation. Re-verified 2026-09-12 —
+      <code>INTERVIEW_VENDOR_REGISTRY</code> model strings (gpt-4o,
+      gemini-3.6-flash, grok-4.6, sonar-pro) and the 7-vendor
+      <code>GET /api/ops/integration-status</code> list unchanged since the prior
+      pass; no drift found. &sect; 04 (Client analytics setup procedures)
+      added 2026-09-12, consolidating the prior standalone Word deliverable
+      into this living document. Update this document as vendors are added
+      or removed — it's meant to be the living reference, not a point-in-time
+      snapshot.
+    </div>
+
+  </main>
+</div>
