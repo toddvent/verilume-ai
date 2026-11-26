@@ -26457,18 +26457,75 @@ function pdAllocate(channel, total, startDay, hitDay, endDay){
   return out;
 }
 
-// One GA4 pull for a date window. Daily grain by channel group, source/medium and campaign.
-async function fetchGa4Daily(propertyId, fromDay, toDay){
+// How far back the first pull goes (Todd, 2026-11-26: 25 months), and how many recent days every later pull re-reads.
+const PD_BACKFILL_DAYS = 760;
+const PD_REPULL_DAYS = 4;
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_ga4_history_settings (
+    accountid TEXT PRIMARY KEY,
+    enabled INTEGER NOT NULL DEFAULT 0,
+    sets TEXT NOT NULL DEFAULT '[]',
+    activatedat TEXT,
+    activatedby TEXT,
+    updatedat TEXT NOT NULL
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS ga4_backfill_state (
+    accountid TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    doneat TEXT,
+    PRIMARY KEY (accountid, kind)
+  );
+`);
+// Optional detail sets a client can switch on. Rows are stored in account_ga4_detail with the dimension values in d1..d4
+// and the metric values in m1..m6, in the order listed here. The base daily pull (channel/source/campaign) is always on once history is on.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_ga4_detail (
+    accountid TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    day TEXT NOT NULL,
+    d1 TEXT NOT NULL DEFAULT '', d2 TEXT NOT NULL DEFAULT '', d3 TEXT NOT NULL DEFAULT '', d4 TEXT NOT NULL DEFAULT '',
+    m1 REAL, m2 REAL, m3 REAL, m4 REAL, m5 REAL, m6 REAL,
+    pulledat TEXT NOT NULL,
+    PRIMARY KEY (accountid, kind, day, d1, d2, d3, d4)
+  );
+`);
+const GA4_DETAIL_SETS = {
+  utm: { label: 'UTM detail', help: 'Campaign ID (utm_id), term and content with source/medium, so web traffic can be matched to a Verilume campaign.',
+    dims: ['sessionSourceMedium', 'sessionManualCampaignId', 'sessionManualTerm', 'sessionManualAdContent'],
+    metrics: ['sessions', 'engagedSessions', 'totalUsers', 'keyEvents'] },
+  events: { label: 'Key events by name', help: 'Which events (form, call click, booking start) make up the key-event total, to reduce double counting.',
+    dims: ['eventName', 'sessionSourceMedium', 'sessionCampaignName'],
+    metrics: ['eventCount', 'keyEvents', 'totalUsers'] },
+  ecommerce: { label: 'Ecommerce', help: 'Transactions, revenue, carts and checkouts, if the site has GA4 ecommerce tracking.',
+    dims: ['sessionSourceMedium', 'sessionCampaignName'],
+    metrics: ['transactions', 'purchaseRevenue', 'addToCarts', 'checkouts'] },
+  engagement: { label: 'Engagement depth', help: 'New users, engagement time and page views by channel.',
+    dims: ['sessionDefaultChannelGroup'],
+    metrics: ['newUsers', 'userEngagementDuration', 'screenPageViews', 'sessions'] },
+  landing: { label: 'Landing pages', help: 'Sessions, engagement and key events by landing page.',
+    dims: ['landingPage', 'sessionSourceMedium'],
+    metrics: ['sessions', 'engagedSessions', 'keyEvents'] },
+  device_geo: { label: 'Device and location', help: 'Device type, country and region.',
+    dims: ['deviceCategory', 'country', 'region'],
+    metrics: ['sessions', 'engagedSessions', 'totalUsers', 'keyEvents'] }
+};
+
+// One GA4 report for a date window. `set` = null for the base daily report, else a GA4_DETAIL_SETS entry.
+async function fetchGa4Set(propertyId, fromDay, toDay, set){
   const accessToken = await getGa4AccessToken();
-  const LIMIT = 100000; let offset = 0; const rows = []; let truncated = false, sampled = false;
-  for (let page = 0; page < 20; page++){
+  const dims = set ? set.dims : ['sessionDefaultChannelGroup', 'sessionSourceMedium', 'sessionCampaignName'];
+  const mets = set ? set.metrics : ['sessions', 'engagedSessions', 'totalUsers', 'keyEvents'];
+  const LIMIT = 100000, MAXPAGES = set ? 10 : 20; let offset = 0; const rows = []; let truncated = false, sampled = false;
+  for (let page = 0; page < MAXPAGES; page++){
     const resp = await fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${encodeURIComponent(propertyId)}:runReport`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         dateRanges: [{ startDate: fromDay, endDate: toDay }],
-        dimensions: [{ name: 'date' }, { name: 'sessionDefaultChannelGroup' }, { name: 'sessionSourceMedium' }, { name: 'sessionCampaignName' }],
-        metrics: [{ name: 'sessions' }, { name: 'engagedSessions' }, { name: 'totalUsers' }, { name: 'keyEvents' }],
+        dimensions: [{ name: 'date' }].concat(dims.map(name => ({ name }))),
+        metrics: mets.map(name => ({ name })),
         limit: LIMIT, offset
       })
     });
@@ -26479,9 +26536,8 @@ async function fetchGa4Daily(propertyId, fromDay, toDay){
     }
     (data.rows || []).forEach(r => rows.push({
       day: r.dimensionValues[0].value.replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3'),
-      channelgroup: r.dimensionValues[1].value || '', sourcemedium: r.dimensionValues[2].value || '', campaign: r.dimensionValues[3].value || '',
-      sessions: Number(r.metricValues[0].value) || 0, engagedsessions: Number(r.metricValues[1].value) || 0,
-      users: Number(r.metricValues[2].value) || 0, keyevents: Number(r.metricValues[3].value) || 0
+      dims: dims.map((_, i) => r.dimensionValues[i + 1].value || ''),
+      mets: mets.map((_, i) => Number(r.metricValues[i].value) || 0)
     }));
     const md = data.metadata || {};
     if (md.dataLossFromOtherRow) truncated = true;
@@ -26489,61 +26545,87 @@ async function fetchGa4Daily(propertyId, fromDay, toDay){
     const total = Number(data.rowCount) || rows.length;
     if (rows.length >= total || !(data.rows || []).length) break;
     offset += LIMIT;
-    if (page === 19) truncated = true;
+    if (page === MAXPAGES - 1) truncated = true;
   }
   return { rows, truncated, sampled };
 }
 
-function pdStoreGa4Rows(accountId, rows){
+function pdStoreRows(accountId, kind, rows){
   const stamp = new Date().toISOString();
-  const up = db.prepare(`INSERT INTO account_ga4_daily (accountid, day, channelgroup, sourcemedium, campaign, sessions, engagedsessions, users, keyevents, pulledat)
-    VALUES (?,?,?,?,?,?,?,?,?,?)
-    ON CONFLICT(accountid, day, channelgroup, sourcemedium, campaign) DO UPDATE SET sessions=excluded.sessions, engagedsessions=excluded.engagedsessions, users=excluded.users, keyevents=excluded.keyevents, pulledat=excluded.pulledat`);
-  rows.forEach(r => up.run(accountId, r.day, r.channelgroup, r.sourcemedium, r.campaign, r.sessions, r.engagedsessions, r.users, r.keyevents, stamp));
+  if (kind === 'base'){
+    const up = db.prepare(`INSERT INTO account_ga4_daily (accountid, day, channelgroup, sourcemedium, campaign, sessions, engagedsessions, users, keyevents, pulledat)
+      VALUES (?,?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(accountid, day, channelgroup, sourcemedium, campaign) DO UPDATE SET sessions=excluded.sessions, engagedsessions=excluded.engagedsessions, users=excluded.users, keyevents=excluded.keyevents, pulledat=excluded.pulledat`);
+    rows.forEach(r => up.run(accountId, r.day, r.dims[0], r.dims[1], r.dims[2], r.mets[0], r.mets[1], r.mets[2], r.mets[3], stamp));
+  } else {
+    const up = db.prepare(`INSERT INTO account_ga4_detail (accountid, kind, day, d1, d2, d3, d4, m1, m2, m3, m4, m5, m6, pulledat)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(accountid, kind, day, d1, d2, d3, d4) DO UPDATE SET m1=excluded.m1, m2=excluded.m2, m3=excluded.m3, m4=excluded.m4, m5=excluded.m5, m6=excluded.m6, pulledat=excluded.pulledat`);
+    rows.forEach(r => { const d = r.dims.concat(['', '', '', '']).slice(0, 4); const m = r.mets.concat([null, null, null, null, null, null]).slice(0, 6); up.run(accountId, kind, r.day, d[0], d[1], d[2], d[3], m[0], m[1], m[2], m[3], m[4], m[5], stamp); });
+  }
   return rows.length;
 }
 
-// Pull one account. mode 'backfill' = 13 months back to yesterday (Eastern); 'daily' = last 4 days (yesterday plus a re-pull window
-// because GA4 revises recent days). Today is never pulled — a partial day would read as a drop.
-async function pdPullGa4Account(account, mode){
-  const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random();
-  const today = pdToday(); const toDay = pdAddDays(today, -1);
-  const fromDay = mode === 'backfill' ? pdAddDays(today, -400) : pdAddDays(today, -4);
-  db.prepare('INSERT INTO ga4_pull_runs (id, accountid, startedat, status, fromday, today) VALUES (?,?,?,?,?,?)').run(id, account.accountId, new Date().toISOString(), 'running', fromDay, toDay);
-  try {
-    let stored = 0, truncated = false, sampled = false;
-    // Backfill in 90-day slices so one slice never nears the row cap.
-    let a = fromDay;
-    while (a <= toDay){
-      const b = pdAddDays(a, 89) < toDay ? pdAddDays(a, 89) : toDay;
-      const r = await fetchGa4Daily(account.analyticsGa4PropertyId, a, b);
-      stored += pdStoreGa4Rows(account.accountId, r.rows);
-      truncated = truncated || r.truncated; sampled = sampled || r.sampled;
-      a = pdAddDays(b, 1);
-    }
-    db.prepare('UPDATE ga4_pull_runs SET status=?, finishedat=?, rowsstored=?, truncated=?, sampled=?, message=? WHERE id=?')
-      .run('ok', new Date().toISOString(), stored, truncated ? 1 : 0, sampled ? 1 : 0, truncated ? 'Some rows were grouped into (other) by GA4 — consider the BigQuery export.' : (sampled ? 'GA4 sampled part of this data.' : null), id);
-    return { ok: true, stored, truncated, sampled, fromDay, toDay };
-  } catch (e){
-    db.prepare('UPDATE ga4_pull_runs SET status=?, finishedat=?, message=? WHERE id=?').run('failed', new Date().toISOString(), String(e && e.message || e).slice(0, 500), id);
-    return { ok: false, reason: e && e.ga4Status || 'error', message: e && e.message };
-  }
+function pdHistorySettings(accountId){
+  const r = db.prepare('SELECT enabled, sets, activatedat, activatedby FROM account_ga4_history_settings WHERE accountid = ?').get(accountId);
+  let sets = []; try { sets = JSON.parse(r && r.sets || '[]').filter(k => GA4_DETAIL_SETS[k]); } catch (e){ sets = []; }
+  return { enabled: !!(r && r.enabled), sets, activatedAt: r && r.activatedat || null, activatedBy: r && r.activatedby || null };
 }
 
-// Hourly look; each account is pulled once per Eastern day (after 4am Eastern so GA4 has settled), first time as a backfill.
+// Pull one account: the base daily report plus each detail set the client switched on. A set is backfilled the first time it is
+// pulled (25 months, 90-day slices); after that each pull re-reads the last few days, because GA4 revises recent days.
+// Today is never pulled — a partial day would read as a drop.
+async function pdPullGa4Account(account, forceBackfill){
+  const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random();
+  const today = pdToday(); const toDay = pdAddDays(today, -1);
+  const settings = pdHistorySettings(account.accountId);
+  const kinds = ['base'].concat(settings.sets);
+  db.prepare('INSERT INTO ga4_pull_runs (id, accountid, startedat, status, fromday, today) VALUES (?,?,?,?,?,?)').run(id, account.accountId, new Date().toISOString(), 'running', pdAddDays(today, -PD_BACKFILL_DAYS), toDay);
+  let stored = 0, truncated = false, sampled = false; const notes = []; let failed = null;
+  for (const kind of kinds){
+    try {
+      const done = db.prepare('SELECT doneat FROM ga4_backfill_state WHERE accountid = ? AND kind = ?').get(account.accountId, kind);
+      const backfill = forceBackfill || !(done && done.doneat);
+      let a = pdAddDays(today, backfill ? -PD_BACKFILL_DAYS : -PD_REPULL_DAYS);
+      let kindRows = 0, kindTrunc = false;
+      while (a <= toDay){
+        const b = pdAddDays(a, 89) < toDay ? pdAddDays(a, 89) : toDay;
+        const r = await fetchGa4Set(account.analyticsGa4PropertyId, a, b, kind === 'base' ? null : GA4_DETAIL_SETS[kind]);
+        kindRows += pdStoreRows(account.accountId, kind, r.rows);
+        kindTrunc = kindTrunc || r.truncated; truncated = truncated || r.truncated; sampled = sampled || r.sampled;
+        a = pdAddDays(b, 1);
+      }
+      stored += kindRows;
+      if (backfill) db.prepare('INSERT INTO ga4_backfill_state (accountid, kind, doneat) VALUES (?,?,?) ON CONFLICT(accountid, kind) DO UPDATE SET doneat=excluded.doneat').run(account.accountId, kind, new Date().toISOString());
+      notes.push(kind + ': ' + kindRows + (backfill ? ' (history)' : '') + (kindTrunc ? ' (some rows grouped as other)' : ''));
+    } catch (e){
+      failed = failed || { reason: e && e.ga4Status || 'error', message: e && e.message };
+      notes.push(kind + ': failed — ' + String(e && e.message || e).slice(0, 160));
+    }
+  }
+  const status = failed ? (stored ? 'partial' : 'failed') : 'ok';
+  db.prepare('UPDATE ga4_pull_runs SET status=?, finishedat=?, rowsstored=?, truncated=?, sampled=?, message=? WHERE id=?')
+    .run(status, new Date().toISOString(), stored, truncated ? 1 : 0, sampled ? 1 : 0, notes.join(' · ').slice(0, 900), id);
+  return failed ? { ok: false, stored, reason: failed.reason, message: failed.message, notes } : { ok: true, stored, truncated, sampled, notes };
+}
+
+// Hourly look; each opted-in account is pulled once per Eastern day (after 4am Eastern so GA4 has settled).
 async function pdGa4Tick(){
   if (!ga4ServiceAccount) return;
   const hour = Number(new Intl.DateTimeFormat('en-US', { timeZone: PD_TZ, hour: '2-digit', hour12: false }).format(new Date()));
   if (hour < 4) return;
   const todayEt = pdToday();
-  const accounts = db.prepare("SELECT * FROM accounts WHERE analyticsGa4PropertyId IS NOT NULL AND analyticsGa4PropertyId != '' AND archivedAt IS NULL").all();
+  const accounts = db.prepare(`SELECT a.* FROM accounts a JOIN account_ga4_history_settings s ON s.accountid = a.accountId
+    WHERE s.enabled = 1 AND a.analyticsGa4PropertyId IS NOT NULL AND a.analyticsGa4PropertyId != '' AND a.archivedAt IS NULL`).all();
+  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: PD_TZ });
   for (const acct of accounts){
-    const last = db.prepare("SELECT startedat, status FROM ga4_pull_runs WHERE accountid = ? AND status = 'ok' ORDER BY startedat DESC LIMIT 1").get(acct.accountId);
-    const lastDayEt = last ? new Intl.DateTimeFormat('en-CA', { timeZone: PD_TZ }).format(new Date(last.startedat)) : null;
-    if (lastDayEt === todayEt) continue;
+    const last = db.prepare("SELECT startedat FROM ga4_pull_runs WHERE accountid = ? AND status IN ('ok','partial') ORDER BY startedat DESC LIMIT 1").get(acct.accountId);
+    const sets = pdHistorySettings(acct.accountId).sets;
+    const pending = ['base'].concat(sets).some(k => !db.prepare('SELECT doneat FROM ga4_backfill_state WHERE accountid = ? AND kind = ? AND doneat IS NOT NULL').get(acct.accountId, k));
+    if (last && fmt.format(new Date(last.startedat)) === todayEt && !pending) continue;
     const running = db.prepare("SELECT 1 FROM ga4_pull_runs WHERE accountid = ? AND status = 'running' AND startedat > ?").get(acct.accountId, new Date(Date.now() - 30 * 60 * 1000).toISOString());
     if (running) continue;
-    try { await pdPullGa4Account(acct, last ? 'daily' : 'backfill'); } catch (e){ console.error('[ga4-daily]', acct.accountId, e && e.message); }
+    try { await pdPullGa4Account(acct, false); } catch (e){ console.error('[ga4-daily]', acct.accountId, e && e.message); }
   }
 }
 let pdGa4Timer = null;
@@ -40122,6 +40204,54 @@ Submit your response via the campaign_intake_turn tool.`;
       }
     }
 
+    // GA4 history: the client's own switch (Train the Brain > Connect a Data Source), plus status and a read of the stored detail.
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'ga4-history-settings' && (req.method === 'GET' || req.method === 'POST')){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      if (req.method === 'POST'){
+        const body = await readBody(req).catch(() => ({})) || {};
+        const wantOn = !!body.enabled;
+        const sets = (Array.isArray(body.sets) ? body.sets : []).filter(k => GA4_DETAIL_SETS[k]);
+        if (wantOn && !account.analyticsGa4PropertyId) return sendJson(res, 400, { error: 'Add your GA4 property ID first, then switch this on.' });
+        const prev = pdHistorySettings(accountId);
+        const now = new Date().toISOString();
+        db.prepare(`INSERT INTO account_ga4_history_settings (accountid, enabled, sets, activatedat, activatedby, updatedat) VALUES (?,?,?,?,?,?)
+          ON CONFLICT(accountid) DO UPDATE SET enabled=excluded.enabled, sets=excluded.sets, activatedat=COALESCE(account_ga4_history_settings.activatedat, excluded.activatedat), activatedby=COALESCE(account_ga4_history_settings.activatedby, excluded.activatedby), updatedat=excluded.updatedat`)
+          .run(accountId, wantOn ? 1 : 0, JSON.stringify(sets), wantOn ? now : null, wantOn ? String(body.by || '').slice(0, 120) : null, now);
+        // Turning it on (or adding a set) starts the pull now rather than waiting for the next hourly look; the page shows progress.
+        if (wantOn && ga4ServiceAccount && (!prev.enabled || sets.some(k => !prev.sets.includes(k)))){
+          pdPullGa4Account(account, false).catch(e => console.error('[ga4-daily] start failed:', accountId, e && e.message));
+        }
+      }
+      const st = pdHistorySettings(accountId);
+      const lastRun = db.prepare('SELECT startedat, finishedat, status, fromday, today, rowsstored, truncated, sampled, message FROM ga4_pull_runs WHERE accountid = ? ORDER BY startedat DESC LIMIT 1').get(accountId) || null;
+      const base = db.prepare('SELECT MIN(day) AS first, MAX(day) AS last, COUNT(DISTINCT day) AS days FROM account_ga4_daily WHERE accountid = ?').get(accountId);
+      const detail = db.prepare('SELECT kind, MIN(day) AS first, MAX(day) AS last, COUNT(*) AS n FROM account_ga4_detail WHERE accountid = ? GROUP BY kind').all(accountId);
+      return sendJson(res, 200, {
+        configured: !!ga4ServiceAccount, serviceAccountEmail: ga4ServiceAccount ? ga4ServiceAccount.client_email : null,
+        propertyOnFile: !!account.analyticsGa4PropertyId, timeZone: PD_TZ, historyMonths: 25,
+        enabled: st.enabled, sets: st.sets, activatedAt: st.activatedAt,
+        available: Object.keys(GA4_DETAIL_SETS).map(k => ({ key: k, label: GA4_DETAIL_SETS[k].label, help: GA4_DETAIL_SETS[k].help })),
+        lastRun, coverage: { base, detail }
+      });
+    }
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'ga4-detail' && req.method === 'GET'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const u = new URL(req.url, 'http://x');
+      const kind = u.searchParams.get('kind');
+      if (!GA4_DETAIL_SETS[kind]) return sendJson(res, 400, { error: 'unknown detail set' });
+      const to = pdDay(u.searchParams.get('to')) || pdAddDays(pdToday(), -1);
+      const from = pdDay(u.searchParams.get('from')) || pdAddDays(to, -29);
+      if (pdDaysBetween(from, to) > 800) return sendJson(res, 400, { error: 'range is limited to 800 days' });
+      const set = GA4_DETAIL_SETS[kind];
+      const rows = db.prepare('SELECT day, d1, d2, d3, d4, m1, m2, m3, m4, m5, m6 FROM account_ga4_detail WHERE accountid = ? AND kind = ? AND day >= ? AND day <= ? ORDER BY day LIMIT 50000').all(accountId, kind, from, to)
+        .map(r => { const o = { day: r.day }; set.dims.forEach((n, i) => { o[n] = r['d' + (i + 1)]; }); set.metrics.forEach((n, i) => { o[n] = r['m' + (i + 1)]; }); return o; });
+      return sendJson(res, 200, { kind, label: set.label, timeZone: PD_TZ, from, to, rows });
+    }
+
     // Integrated daily performance — status of the stored daily GA4 pull, the computed daily rows, and a staff trigger.
     if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'performance-daily' && req.method === 'GET'){
       const accountId = decodeURIComponent(parts[2]);
@@ -40140,7 +40270,7 @@ Submit your response via the campaign_intake_turn tool.`;
       const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(decodeURIComponent(parts[3]));
       if (!account || !account.analyticsGa4PropertyId) return sendJson(res, 404, { error: 'account or GA4 property not found' });
       const u = new URL(req.url, 'http://x');
-      const result = await pdPullGa4Account(account, u.searchParams.get('mode') === 'backfill' ? 'backfill' : 'daily');
+      const result = await pdPullGa4Account(account, u.searchParams.get('mode') === 'backfill');
       return sendJson(res, 200, result);
     }
 
