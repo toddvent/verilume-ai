@@ -25264,6 +25264,9 @@ const ACCESS_ITEMS = [
   { key: 'mmm', label: 'marketing mix modeling and test development',
     match: /^(\/api\/accounts\/[^/]+\/mmm-[a-z-]+|\/api\/campaigns\/[^/]+\/mmm-line-items|\/api\/mmm-inputs\/[^/]+)(\/|$)/,
     rule: { admin: 'yes', lead: 'yes', analystManager: 'yes', other: 'no', agency: 'no', creative: 'no', staff: 'view', viewer: 'view' } },
+  { key: 'connections', label: 'connecting or changing ad and analytics accounts (Meta, Google)',
+    match: /^\/api\/accounts\/[^/]+\/(meta-oauth-start|meta-connection|meta-adaccounts|google-oauth-start|google-connection|google-resources)(\/|$)/,
+    rule: { admin: 'yes', lead: 'yes', analystManager: 'view', other: 'view', agency: 'no', creative: 'no', staff: 'yes', viewer: 'view' } },
   { key: 'billing', label: 'billing and plan',
     match: /^(\/api\/accounts\/[^/]+\/invoices|\/api\/invoices\/[^/]+)$/,
     rule: { admin: 'yes', lead: 'no', analystManager: 'no', other: 'no', agency: 'no', creative: 'no', staff: 'no' } }
@@ -26711,6 +26714,75 @@ createTableIfNeeded(`
   );
 `);
 createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS platform_credentials (
+    id TEXT PRIMARY KEY,
+    provider TEXT NOT NULL,
+    name TEXT NOT NULL,
+    envvar TEXT,
+    createdon TEXT,
+    expireson TEXT,
+    owner TEXT,
+    notes TEXT,
+    lastrenewedon TEXT,
+    remindedlevel INTEGER,
+    updatedat TEXT,
+    updatedby TEXT
+  );
+`);
+// Platform credentials register: names, create and expiry dates only. A token value is never stored here.
+const CRED_REMIND_DAYS = [30, 14, 7, 3, 1, 0];
+function credDaysLeft(expireson){
+  if (!expireson) return null;
+  const d = new Date(String(expireson).slice(0, 10) + 'T12:00:00Z'); if (isNaN(d)) return null;
+  const t = new Date(pdToday() + 'T12:00:00Z');
+  return Math.round((d - t) / 86400000);
+}
+function credView(r){
+  const dl = credDaysLeft(r.expireson);
+  return { id: r.id, provider: r.provider, name: r.name, envVar: r.envvar || null, createdOn: r.createdon || null, expiresOn: r.expireson || null, owner: r.owner || null, notes: r.notes || null, lastRenewedOn: r.lastrenewedon || null, daysLeft: dl,
+    status: dl == null ? 'no_expiry' : dl < 0 ? 'expired' : dl <= 7 ? 'urgent' : dl <= 30 ? 'soon' : 'ok', updatedAt: r.updatedat || null, updatedBy: r.updatedby || null };
+}
+function credStaffEmails(){
+  const out = new Set();
+  try { db.prepare("SELECT email, role, status FROM platform_users").all().forEach(u => { if (u.email && (u.status || 'active') === 'active' && u.role !== 'readonly') out.add(String(u.email).toLowerCase()); }); } catch (e) {}
+  String(process.env.CREDENTIAL_ALERT_EMAILS || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean).forEach(x => out.add(x));
+  return [...out];
+}
+// Client sign-ins that expire (Meta logins last about 60 days). Soonest first.
+function credClientTokens(){
+  let rows = [];
+  try { rows = db.prepare("SELECT c.accountid AS accountid, c.tokenexpiresat AS exp, c.status AS status, a.company AS company FROM account_meta_connections c LEFT JOIN accounts a ON a.accountId = c.accountid WHERE c.tokenenc IS NOT NULL AND c.tokenexpiresat IS NOT NULL ORDER BY c.tokenexpiresat ASC LIMIT 300").all(); } catch (e) {}
+  return rows.map(r => ({ accountId: r.accountid, company: r.company || null, provider: 'meta', expiresOn: String(r.exp).slice(0, 10), daysLeft: credDaysLeft(r.exp), status: r.status }));
+}
+async function credReminderTick(){
+  const hour = Number(new Intl.DateTimeFormat('en-US', { timeZone: PD_TZ, hour: '2-digit', hour12: false }).format(new Date()));
+  if (hour < 8) return;
+  let rows = []; try { rows = db.prepare('SELECT * FROM platform_credentials WHERE expireson IS NOT NULL').all(); } catch (e) { return; }
+  const due = [];
+  for (const r of rows){
+    const dl = credDaysLeft(r.expireson); if (dl == null) continue;
+    const level = CRED_REMIND_DAYS.slice().reverse().find(t => dl <= t); // smallest threshold already reached
+    if (level == null) continue;
+    if (r.remindedlevel != null && Number(r.remindedlevel) <= level) continue;
+    due.push({ r, dl, level });
+  }
+  const clientSoon = credClientTokens().filter(c => c.daysLeft != null && c.daysLeft <= 14);
+  if (!due.length) return;
+  const to = credStaffEmails(); if (!to.length) { console.warn('[credentials] reminders due but no staff email on file'); return; }
+  const lines = due.map(d => `- ${d.r.provider.toUpperCase()}: ${d.r.name}${d.r.envvar ? ' (' + d.r.envvar + ')' : ''} ${d.dl < 0 ? 'EXPIRED ' + (-d.dl) + ' day(s) ago' : d.dl === 0 ? 'expires TODAY' : 'expires in ' + d.dl + ' day(s)'} on ${String(d.r.expireson).slice(0, 10)}`);
+  const body = 'Platform credentials needing renewal:\n\n' + lines.join('\n') + (clientSoon.length ? '\n\nClient Meta logins expiring within 14 days: ' + clientSoon.length + ' (see Ops Console, Platform Credentials).' : '') + '\n\nRenew the token at the provider, update it in Railway/Vercel, then open Ops Console > Platform Credentials and press Renewed. Token values are never stored in Verilume.';
+  const sent = await sendTransactionalEmail({ to: to.join(','), subject: 'Verilume: ' + due.length + ' platform credential' + (due.length === 1 ? '' : 's') + ' to renew', textBody: body });
+  if (sent && sent.emailStatus === 'sent') due.forEach(d => { try { db.prepare('UPDATE platform_credentials SET remindedlevel = ? WHERE id = ?').run(d.level, d.r.id); } catch (e) {} });
+  else console.warn('[credentials] reminder email not sent:', sent && sent.emailStatus);
+}
+let credTimer = null;
+function startCredentialReminders(){
+  if (credTimer) return;
+  const tick = () => credReminderTick().catch(e => console.error('[credentials] tick failed:', e && e.message));
+  setTimeout(tick, 6 * 60 * 1000);
+  credTimer = setInterval(tick, 60 * 60 * 1000);
+}
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS account_meta_daily (
     accountid TEXT NOT NULL,
     day TEXT NOT NULL,
@@ -26803,7 +26875,8 @@ async function metaListAdAccounts(token){
     (page.data || []).forEach(a => out.push({ id: String(a.account_id || '').replace(/^act_/, ''), name: a.name || null, currency: a.currency || null, timeZone: a.timezone_name || null, status: a.account_status }));
     if (page.paging && page.paging.next) page = await metaGraph(page.paging.next, null, token); else break;
   }
-  return out.filter(a => a.id);
+  // Meta account_status 1 = ACTIVE. Closed, disabled and unsettled accounts are not offered.
+  return out.filter(a => a.id && Number(a.status) === 1);
 }
 function metaAdAccountId(v){ const d = String(v || '').replace(/^act_/i, '').replace(/\s+/g, ''); return /^\d{5,20}$/.test(d) ? d : null; }
 
@@ -40886,7 +40959,9 @@ Submit your response via the campaign_intake_turn tool.`;
         const expires = new Date(Date.now() + (Number(long.expires_in || short.expires_in) || 60 * 86400) * 1000).toISOString();
         const accts = await metaListAdAccounts(token);
         const now = new Date().toISOString();
-        const one = accts.length === 1 ? accts[0] : null;
+        // Renewing the login keeps the ad account already chosen when it is still offered; otherwise one account is chosen automatically, or the client chooses.
+        let keepId = null; try { const pc = db.prepare('SELECT adaccountid FROM account_meta_connections WHERE accountid = ?').get(accountId); keepId = pc && pc.adaccountid || null; } catch (e) {}
+        const one = (keepId && accts.find(a => a.id === keepId)) || (accts.length === 1 ? accts[0] : null);
         db.prepare(`INSERT INTO account_meta_connections (accountid, adaccountid, tokenenc, tokenlast4, status, accountname, currency, timezonename, connectedat, connectedby, lasterror, backfilldoneat, updatedat, tokenexpiresat)
           VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL,?,?)
           ON CONFLICT(accountid) DO UPDATE SET adaccountid=excluded.adaccountid, tokenenc=excluded.tokenenc, tokenlast4=excluded.tokenlast4, status=excluded.status, accountname=excluded.accountname,
@@ -40899,6 +40974,50 @@ Submit your response via the campaign_intake_turn tool.`;
         console.error('[meta-oauth] callback failed:', e && e.message);
         return back(accountId, 'error');
       }
+    }
+    // Platform credentials register (Ops Console > Platform Credentials). Names and dates only; never a token value.
+    if (parts.length >= 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'platform-credentials'){
+      if (!requireStaff(req, res)) return;
+      const staff = staffLabel(req) || 'Staff';
+      const cleanDate = v => { const x = String(v || '').slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(x) ? x : null; };
+      if (parts.length === 3 && req.method === 'GET'){
+        const rows = db.prepare('SELECT * FROM platform_credentials ORDER BY (expireson IS NULL), expireson ASC, name ASC').all().map(credView);
+        return sendJson(res, 200, { today: pdToday(), reminderDays: CRED_REMIND_DAYS, emailConfigured: !!(POSTMARK_SERVER_TOKEN && POSTMARK_FROM_EMAIL), recipients: credStaffEmails().length, credentials: rows, clientTokens: credClientTokens() });
+      }
+      if (parts.length === 3 && req.method === 'POST'){
+        const b = await readBody(req).catch(() => ({})) || {};
+        const provider = String(b.provider || '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 30);
+        const name = String(b.name || '').trim().slice(0, 120);
+        if (!provider || !name) return sendJson(res, 400, { error: 'Choose a provider and give the token a name.' });
+        const created = cleanDate(b.createdOn), expires = cleanDate(b.expiresOn);
+        if (b.expiresOn && !expires) return sendJson(res, 400, { error: 'Expiry date must look like 2026-12-31.' });
+        const now = new Date().toISOString();
+        const envvar = String(b.envVar || '').trim().slice(0, 80) || null, owner = String(b.owner || '').trim().slice(0, 80) || null, notes = String(b.notes || '').trim().slice(0, 400) || null;
+        if (b.id){
+          const old = db.prepare('SELECT * FROM platform_credentials WHERE id = ?').get(String(b.id));
+          if (!old) return sendJson(res, 404, { error: 'not found' });
+          db.prepare('UPDATE platform_credentials SET provider=?, name=?, envvar=?, createdon=?, expireson=?, owner=?, notes=?, remindedlevel=?, updatedat=?, updatedby=? WHERE id=?')
+            .run(provider, name, envvar, created, expires, owner, notes, (old.expireson === expires ? old.remindedlevel : null), now, staff, old.id);
+          return sendJson(res, 200, credView(db.prepare('SELECT * FROM platform_credentials WHERE id = ?').get(old.id)));
+        }
+        const id = generateId('CRED');
+        db.prepare('INSERT INTO platform_credentials (id, provider, name, envvar, createdon, expireson, owner, notes, remindedlevel, updatedat, updatedby) VALUES (?,?,?,?,?,?,?,?,NULL,?,?)').run(id, provider, name, envvar, created, expires, owner, notes, now, staff);
+        return sendJson(res, 200, credView(db.prepare('SELECT * FROM platform_credentials WHERE id = ?').get(id)));
+      }
+      if (parts.length === 5 && parts[4] === 'renewed' && req.method === 'POST'){
+        const id = decodeURIComponent(parts[3]);
+        const old = db.prepare('SELECT * FROM platform_credentials WHERE id = ?').get(id);
+        if (!old) return sendJson(res, 404, { error: 'not found' });
+        const b = await readBody(req).catch(() => ({})) || {};
+        const expires = cleanDate(b.expiresOn); if (b.expiresOn && !expires) return sendJson(res, 400, { error: 'Expiry date must look like 2026-12-31.' });
+        db.prepare('UPDATE platform_credentials SET createdon = ?, expireson = ?, lastrenewedon = ?, remindedlevel = NULL, updatedat = ?, updatedby = ? WHERE id = ?').run(pdToday(), expires, pdToday(), new Date().toISOString(), staff, id);
+        return sendJson(res, 200, credView(db.prepare('SELECT * FROM platform_credentials WHERE id = ?').get(id)));
+      }
+      if (parts.length === 4 && req.method === 'DELETE'){
+        db.prepare('DELETE FROM platform_credentials WHERE id = ?').run(decodeURIComponent(parts[3]));
+        return sendJson(res, 200, { ok: true });
+      }
+      return sendJson(res, 404, { error: 'not found' });
     }
     if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'meta-adaccounts' && req.method === 'GET'){
       const accountId = decodeURIComponent(parts[2]);
@@ -40932,6 +41051,12 @@ Submit your response via the campaign_intake_turn tool.`;
           if (e.metaCode === 190){ console.error('[meta] Verilume system-user token was rejected by Meta (code 190). Replace META_SYSTEM_USER_TOKEN.'); return sendJson(res, 503, { error: 'Verilume\'s own Meta connection needs attention. Support has been notified; please try again later.' }); }
           if ([10, 100, 200, 294].includes(e.metaCode)) return sendJson(res, 400, { error: 'Verilume cannot see that ad account yet. In Meta Business Settings, open Accounts > Ad accounts, select it, choose Assign partner, enter Verilume\'s Business ID' + (process.env.META_PARTNER_BUSINESS_ID ? ' (' + String(process.env.META_PARTNER_BUSINESS_ID).replace(/\D/g, '') + ')' : '') + ', and give View performance access. Then try again.' });
           return sendJson(res, 400, { error: 'Meta could not open that ad account: ' + String(e.message).slice(0, 160) });
+        }
+        if (info && info.account_status !== undefined && Number(info.account_status) !== 1) return sendJson(res, 400, { error: 'That ad account is not active in Meta. Choose an active ad account.' });
+        // Changing to a different ad account: the client's admin chooses whether the previous account's stored numbers are removed.
+        if (prevConn && prevConn.adaccountid && prevConn.adaccountid !== adId && body.clearOld === true){
+          db.prepare('DELETE FROM account_meta_daily WHERE accountid = ?').run(accountId);
+          try { logAccountDataAccess({ accountId, resource: 'account_meta_daily', action: 'delete', actorType: 'member', actorId: String(body.by || '').slice(0, 120), detail: { reason: 'ad account changed', from: prevConn.adaccountid, to: adId } }); } catch (e) {}
         }
         const now = new Date().toISOString();
         db.prepare(`INSERT INTO account_meta_connections (accountid, adaccountid, tokenenc, tokenlast4, status, accountname, currency, timezonename, connectedat, connectedby, lasterror, backfilldoneat, updatedat)
@@ -55937,6 +56062,7 @@ if (require.main === module) {
   try { startMmmSchedule(); } catch (e){ console.error('[mmm-schedule] could not start:', e && e.message); }
   try { startGa4DailySchedule(); } catch (e){ console.error('[ga4-daily] could not start:', e && e.message); }
   try { startMetaDailySchedule(); } catch (e){ console.error('[meta-daily] could not start:', e && e.message); }
+  try { startCredentialReminders(); } catch (e){ console.error('[credentials] could not start:', e && e.message); }
   try { startGoogleAdsDailySchedule(); } catch (e){ console.error('[gads-daily] could not start:', e && e.message); }
 }
 

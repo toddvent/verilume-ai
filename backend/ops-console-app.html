@@ -298,6 +298,31 @@
       </div>
     </div>
 
+    <div class="module" id="credModule" style="border-top-color:var(--advocacy-tint);" data-group="health">
+      <h3>Platform Credentials &amp; Renewals <span class="badge" style="margin-left:6px;">Staff only</span></h3>
+      <p class="desc">Every platform token that expires (Railway, Vercel, Meta, Google and others) with when it was created and when it runs out. Verilume emails the team at 30, 14, 7, 3 and 1 days before and on the day. This register holds names and dates only. Never paste a token value here; the token itself lives in Railway or Vercel.</p>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;"><button class="btn primary" type="button" onclick="credLoad()">Load credentials</button><button class="btn" type="button" onclick="credEdit(null)">Add a token</button><span id="credStatus" class="empty-note" style="font-style:normal;"></span></div>
+      <div id="credForm" style="display:none;border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px;background:var(--white);">
+        <input type="hidden" id="credId">
+        <div class="field-row">
+          <div style="flex:1 1 140px;"><label for="credProvider">Provider</label><select id="credProvider"><option value="railway">Railway</option><option value="vercel">Vercel</option><option value="meta">Meta</option><option value="google">Google</option><option value="supabase">Supabase</option><option value="postmark">Postmark</option><option value="other">Other</option></select></div>
+          <div style="flex:2 1 220px;"><label for="credName">Token name</label><input type="text" id="credName" placeholder="e.g. Railway API token (deploys)" maxlength="120"></div>
+          <div style="flex:1 1 180px;"><label for="credEnv">Variable name (optional)</label><input type="text" id="credEnv" placeholder="e.g. RAILWAY_TOKEN" maxlength="80"></div>
+        </div>
+        <div class="field-row">
+          <div style="flex:1 1 150px;"><label for="credCreated">Created on</label><input type="date" id="credCreated"></div>
+          <div style="flex:1 1 150px;"><label for="credExpires">Expires on</label><input type="date" id="credExpires"></div>
+          <div style="flex:1 1 150px;"><label for="credOwner">Owner</label><input type="text" id="credOwner" maxlength="80"></div>
+        </div>
+        <div class="field-row"><div style="flex:1 1 100%;"><label for="credNotes">Notes (where it is used, how to renew)</label><input type="text" id="credNotes" maxlength="400"></div></div>
+        <div style="display:flex;gap:10px;margin-top:8px;"><button class="btn primary" type="button" onclick="credSave()">Save</button><button class="btn" type="button" onclick="document.getElementById('credForm').style.display='none'">Cancel</button><span id="credFormMsg" class="empty-note" style="font-style:normal;"></span></div>
+      </div>
+      <div id="credTable" style="overflow-x:auto;"></div>
+      <h3 style="margin-top:22px;font-size:0.85rem;">Client sign-ins that expire</h3>
+      <p class="desc" style="margin-top:2px;">Each client's Meta login lasts about 60 days. The client sees a reminder in Train the Brain and renews with one click on Connect with Meta.</p>
+      <div id="credClientTable" style="overflow-x:auto;"></div>
+    </div>
+
     
     <div class="module" style="border-top-color:var(--advocacy-tint);" data-group="tools">
       <h3>Product Documentation Search</h3>
@@ -1004,5 +1029,30 @@ ut("Enter the ADMIN_API_TOKEN configured on this deployment (top of this page)."
  }
 })();
 </script>
+<script>(function(){
+var TOKEN_KEY='verilume_platform_token';
+function tok(){try{return sessionStorage.getItem(TOKEN_KEY)||''}catch(x){return''}}
+function base(){try{return typeof e==='string'?e:''}catch(x){return''}}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function $(i){return document.getElementById(i)}
+function api(method,path,body){return fetch(base()+'/api/ops/platform-credentials'+path,{method:method,headers:Object.assign({'Authorization':'Bearer '+tok()},body?{'Content-Type':'application/json'}:{}),body:body?JSON.stringify(body):undefined}).then(function(r){return r.json().catch(function(){return{}}).then(function(j){if(!r.ok)throw new Error(j.error||('Request failed ('+r.status+')'));return j})})}
+var LIST=[];
+var PILL={ok:['#E6F4EA','#14532D','OK'],soon:['#FEF3C7','#78350F','Renew soon'],urgent:['#FDE8E8','#7F1D1D','Renew now'],expired:['#FDE8E8','#7F1D1D','Expired'],no_expiry:['#EEF0F4','#444B5A','No expiry set']};
+function pill(st){var p=PILL[st]||PILL.ok;return '<span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:0.75rem;font-weight:600;background:'+p[0]+';color:'+p[1]+';">'+p[2]+'</span>'}
+function left(d){if(d==null)return'—';return d<0?(-d)+' days ago':d===0?'today':d+' days'}
+function render(d){
+ LIST=d.credentials||[];
+ var st=$('credStatus');if(st)st.textContent=(d.emailConfigured?'Reminders go to '+d.recipients+' team member'+(d.recipients===1?'':'s')+' by email.':'Email is not set up on this server, so reminders cannot be sent.')+' Today is '+d.today+' (Eastern).';
+ if(!LIST.length){$('credTable').innerHTML='<p class="empty-note">No tokens recorded yet. Press Add a token and record the Railway and Vercel tokens, with the date each was created and when it expires.</p>'}
+ else{$('credTable').innerHTML='<table style="width:100%;border-collapse:collapse;font-size:0.8125rem;font-variant-numeric:tabular-nums;"><thead><tr>'+['Provider','Token','Created','Expires','Time left','Status','Owner',''].map(function(h){return'<th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);">'+h+'</th>'}).join('')+'</tr></thead><tbody>'+LIST.map(function(c,i){return'<tr><td style="padding:6px 8px;">'+esc(c.provider)+'</td><td style="padding:6px 8px;"><b>'+esc(c.name)+'</b>'+(c.envVar?'<div class="empty-note" style="font-style:normal;">'+esc(c.envVar)+'</div>':'')+(c.notes?'<div class="empty-note" style="font-style:normal;">'+esc(c.notes)+'</div>':'')+'</td><td style="padding:6px 8px;">'+esc(c.createdOn||'—')+'</td><td style="padding:6px 8px;">'+esc(c.expiresOn||'—')+'</td><td style="padding:6px 8px;">'+left(c.daysLeft)+'</td><td style="padding:6px 8px;">'+pill(c.status)+'</td><td style="padding:6px 8px;">'+esc(c.owner||'—')+'</td><td style="padding:6px 8px;white-space:nowrap;"><button class="btn small" type="button" onclick="credRenewed('+i+')">Renewed</button> <button class="btn small" type="button" onclick="credEdit('+i+')">Edit</button> <button class="btn small" type="button" onclick="credDelete('+i+')">Remove</button></td></tr>'}).join('')+'</tbody></table>'}
+ var ct=d.clientTokens||[];
+ $('credClientTable').innerHTML=ct.length?'<table style="width:100%;border-collapse:collapse;font-size:0.8125rem;"><thead><tr><th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);">Client</th><th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);">Provider</th><th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);">Login expires</th><th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);">Time left</th></tr></thead><tbody>'+ct.map(function(c){var st=c.daysLeft==null?'ok':c.daysLeft<0?'expired':c.daysLeft<=7?'urgent':c.daysLeft<=14?'soon':'ok';return'<tr><td style="padding:6px 8px;">'+esc(c.company||c.accountId)+'</td><td style="padding:6px 8px;">Meta</td><td style="padding:6px 8px;">'+esc(c.expiresOn)+'</td><td style="padding:6px 8px;">'+left(c.daysLeft)+' '+pill(st)+'</td></tr>'}).join('')+'</tbody></table>':'<p class="empty-note">No client Meta logins on file yet.</p>';
+}
+window.credLoad=function(){var st=$('credStatus');if(st)st.textContent='Loading…';api('GET','').then(render).catch(function(x){if(st)st.textContent=x.message||'Could not load.'})};
+window.credEdit=function(i){var c=i==null?{}:LIST[i];$('credForm').style.display='block';$('credId').value=c.id||'';$('credProvider').value=c.provider||'railway';$('credName').value=c.name||'';$('credEnv').value=c.envVar||'';$('credCreated').value=c.createdOn||new Date().toISOString().slice(0,10);$('credExpires').value=c.expiresOn||'';$('credOwner').value=c.owner||'';$('credNotes').value=c.notes||'';$('credFormMsg').textContent='';$('credName').focus()};
+window.credSave=function(){var m=$('credFormMsg');m.textContent='Saving…';api('POST','',{id:$('credId').value||undefined,provider:$('credProvider').value,name:$('credName').value,envVar:$('credEnv').value,createdOn:$('credCreated').value,expiresOn:$('credExpires').value,owner:$('credOwner').value,notes:$('credNotes').value}).then(function(){$('credForm').style.display='none';window.credLoad()}).catch(function(x){m.textContent=x.message||'Could not save.'})};
+window.credRenewed=function(i){var c=LIST[i];var d=prompt('New expiry date for "'+c.name+'" (YYYY-MM-DD). Leave blank if it does not expire.','');if(d===null)return;api('POST','/'+encodeURIComponent(c.id)+'/renewed',{expiresOn:d.trim()||undefined}).then(window.credLoad).catch(function(x){alert(x.message||'Could not update.')})};
+window.credDelete=function(i){var c=LIST[i];if(!confirm('Remove "'+c.name+'" from the register? This only removes the reminder; it does not touch the token.'))return;api('DELETE','/'+encodeURIComponent(c.id)).then(window.credLoad).catch(function(x){alert(x.message||'Could not remove.')})};
+})();</script>
 </body>
 </html>

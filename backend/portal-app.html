@@ -5549,6 +5549,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
    <div class="btn-row"><button type="button" class="btn-primary" id="metaConnPickBtn" onclick="metaConnPick()">Use this ad account</button></div>
   </div>
   <div id="metaConnActions" class="btn-row" style="display:none;margin-top:4px;gap:10px;flex-wrap:wrap;">
+   <button type="button" class="btn-secondary" id="metaConnChange" onclick="metaConnChange()">Change ad account</button>
    <button type="button" class="btn-secondary" onclick="metaConnDisconnect(false)">Disconnect</button>
    <button type="button" class="btn-secondary danger" onclick="metaConnDisconnect(true)">Disconnect and delete stored Meta data</button>
   </div>
@@ -9343,8 +9344,9 @@ function patchChips(v){
   var p=c.querySelector(".partner-status-pill");if(!p)return;
   var txt=v&&v.demo?"Demo data":v&&v.choosing?"Almost done — choose an ad account":v&&v.connected?(v.status==="connected"?"Connected — live data flowing":"Connected — needs attention"):"Not connected yet";
   p.textContent=txt;p.classList.toggle("is-connected",!!(v&&v.connected&&(v.status==="connected"||v.demo)))})}
+var lastV=null;
 function render(v){
- var st=el("metaConnState"),form=el("metaConnForm"),act=el("metaConnActions"),pick=el("metaConnPick");if(!st)return;
+ lastV=v;var st=el("metaConnState"),form=el("metaConnForm"),act=el("metaConnActions"),pick=el("metaConnPick");if(!st)return;
  patchChips(v);if(pick)pick.style.display="none";
  if(v.demo){form.style.display="none";act.style.display="none";var dc=v.coverage;st.innerHTML="<b>Demo data.</b> These are sample Meta numbers for the demo account, sized to its Paid Social plan. No real Meta ad account is connected."+(dc&&dc.days?" "+dc.days+" days shown ("+esc(dc.first)+" to "+esc(dc.last)+").":"");return}
  if(!v.configured){st.textContent="Meta connections are being set up for your account. Verilume will let you know when you can connect your ad account.";form.style.display="none";act.style.display="none";return}
@@ -9354,6 +9356,7 @@ function render(v){
  var line="Connected to "+esc(v.accountName||("ad account "+v.adAccountId))+" (ID "+esc(v.adAccountId)+(v.currency?", "+esc(v.currency):"")+(v.timeZone?", "+esc(v.timeZone):"")+").";
  if(v.status==="token_invalid"||v.status==="no_access"){form.style.display="";var sb=el("metaConnSave");if(sb)sb.textContent="Reconnect with Meta"}
  if(v.status&&v.status!=="connected")line+=" <b>Needs attention:</b> "+(v.status==="no_access"?"Verilume can no longer see this ad account. Press Reconnect with Meta and make sure it is ticked.":v.status==="token_invalid"?"Your Meta login has expired. Press Reconnect with Meta.":esc(v.lastError||"the last pull failed; it will try again tomorrow."));
+ if(v.tokenExpiresAt){var dl=Math.ceil((new Date(v.tokenExpiresAt)-new Date())/86400000);if(dl<=14&&dl>=0){line+=' <b>Your Meta login expires '+(dl===0?'today':'in '+dl+' day'+(dl===1?'':'s'))+'.</b> Press Renew Meta login to keep the daily numbers coming.';var sb2=el("metaConnSave");form.style.display="";if(sb2)sb2.textContent="Renew Meta login"}else if(dl<0){line+=' <b>Your Meta login has expired.</b> Press Reconnect with Meta.';form.style.display="";var sb3=el("metaConnSave");if(sb3)sb3.textContent="Reconnect with Meta"}}
  var r=v.lastRun,cov=v.coverage;
  if(r)line+=" "+(r.status==="running"?"First pull running now. Longer histories can take a few minutes.":"Last pull "+esc(fmt(r.finishedat||r.startedat))+": "+(r.status==="ok"?"complete":r.status==="partial"?"partly complete":"failed")+".");
  else line+=" Waiting for the first pull.";
@@ -9365,11 +9368,29 @@ window.metaConnStart=function(){var f=el("metaConnFlag"),b=el("metaConnSave");f.
  call("GET","meta-oauth-start").then(function(d){window.location.href=d.url}).catch(function(e){f.textContent=e.message||"Could not start the Meta login.";b.disabled=false})};
 function loadPick(){var sel=el("metaConnPickSel"),pick=el("metaConnPick");if(!sel||!pick)return;
  call("GET","meta-adaccounts").then(function(d){var a=d.accounts||[];
-  if(!a.length){el("metaConnState").textContent=d.needsReconnect?"Your Meta login has expired. Press Reconnect with Meta.":"Meta did not share any ad accounts. Press Connect with Meta and tick at least one.";var form=el("metaConnForm");if(form)form.style.display="";return}
-  sel.innerHTML=a.map(function(x){return'<option value="'+esc(x.id)+'">'+esc((x.name||"Ad account")+" ("+x.id+")")+"</option>"}).join("");pick.style.display=""}).catch(function(){})}
-window.metaConnPick=function(){var f=el("metaConnFlag"),b=el("metaConnPickBtn");var by="";try{by=typeof state!=="undefined"&&state.userName||""}catch(e){}
- f.textContent="Connecting…";b.disabled=true;
- call("POST","meta-connection",{adAccountId:el("metaConnPickSel").value,by:by}).then(function(v){render(v);f.textContent="Connected. The first pull has started and can take a few minutes.";setTimeout(loadRows,15000)}).catch(function(e){f.textContent=e.message||"Could not connect."}).then(function(){b.disabled=false})};
+  if(!a.length){el("metaConnState").textContent=d.needsReconnect?"Your Meta login has expired. Press Reconnect with Meta.":"Meta did not share any active ad accounts. Press Connect with Meta and tick at least one active ad account.";var form=el("metaConnForm");if(form)form.style.display="";return}
+  sel.innerHTML=a.map(function(x){return'<option value="'+esc(x.id)+'">'+esc((x.name||"Ad account")+" ("+x.id+")")+"</option>"}).join("");if(lastV&&lastV.adAccountId)sel.value=String(lastV.adAccountId);pick.style.display=""}).catch(function(){})}
+window.metaConnChange=function(){var p=el("metaConnPick");if(p){p.style.display="block"}loadPick(true)};
+function askChange(oldName,newName,rows,cb){
+ var ov=document.createElement("div");ov.setAttribute("role","dialog");ov.setAttribute("aria-modal","true");ov.setAttribute("aria-label","Change Meta ad account");
+ ov.style.cssText="position:fixed;inset:0;background:rgba(17,24,39,0.55);display:flex;align-items:center;justify-content:center;z-index:99999;padding:16px;";
+ var box=document.createElement("div");box.style.cssText="background:var(--white,#fff);color:var(--ink,#1D1D1F);max-width:520px;width:100%;border-radius:16px;padding:22px 24px;box-shadow:0 16px 48px rgba(0,0,0,0.25);font-size:0.9rem;line-height:1.5;";
+ box.innerHTML='<h3 style="margin:0 0 8px;font-size:1.05rem;">Change the Meta ad account?</h3><p style="margin:0 0 10px;">Verilume is reading <b>'+esc(oldName)+'</b> and has <b>'+Number(rows).toLocaleString()+'</b> days of its numbers stored. You are switching to <b>'+esc(newName)+'</b>. Only one Meta ad account can be connected at a time. What should happen to the stored numbers from the previous account?</p>'+
+ '<div style="display:grid;gap:8px;margin:12px 0;"><button type="button" class="btn-primary" id="mcReplace" style="text-align:left;">Replace them (recommended)<br><span style="font-weight:400;font-size:0.8125rem;">Delete the previous account\'s numbers and load the new account\'s history, so dashboards and the Brain only see one account.</span></button>'+
+ '<button type="button" class="btn-secondary" id="mcKeep" style="text-align:left;white-space:normal;">Keep them<br><span style="font-weight:400;font-size:0.8125rem;">Leave the previous numbers in place and add the new account\'s on top. Totals will combine both accounts.</span></button></div>'+
+ '<div style="text-align:right;"><button type="button" class="btn-secondary" id="mcCancel">Cancel</button></div>';
+ ov.appendChild(box);document.body.appendChild(ov);
+ function close(){if(ov.parentNode)ov.parentNode.removeChild(ov);document.removeEventListener("keydown",onKey)}
+ function onKey(e){if(e.key==="Escape"){close()}}
+ document.addEventListener("keydown",onKey);
+ el("mcReplace").onclick=function(){close();cb(true)};el("mcKeep").onclick=function(){close();cb(false)};el("mcCancel").onclick=close;el("mcReplace").focus()}
+window.metaConnPick=function(){var f=el("metaConnFlag"),b=el("metaConnPickBtn"),sel=el("metaConnPickSel");var by="";try{by=typeof state!=="undefined"&&state.userName||""}catch(e){}
+ var chosen=sel.value;
+ function go(clearOld){f.textContent="Connecting…";b.disabled=true;
+  call("POST","meta-connection",{adAccountId:chosen,by:by,clearOld:clearOld===true}).then(function(v){render(v);f.textContent="Connected. The first pull has started and can take a few minutes.";setTimeout(loadRows,15000)}).catch(function(e){f.textContent=e.message||"Could not connect."}).then(function(){b.disabled=false})}
+ if(lastV&&lastV.connected&&lastV.adAccountId&&String(lastV.adAccountId)!==String(chosen)&&lastV.coverage&&lastV.coverage.rows>0){
+  var opt=sel.options[sel.selectedIndex];askChange(lastV.accountName||("ad account "+lastV.adAccountId),opt?opt.text:chosen,lastV.coverage.days||lastV.coverage.rows,function(clear){go(clear)});return}
+ go(false)};
 window.metaConnDisconnect=function(del){var f=el("metaConnFlag");
  var ok=true;try{ok=window.confirm(del?"Disconnect Meta and delete all Meta numbers Verilume has stored for this account? This cannot be undone.":"Disconnect Meta? Numbers already stored stay on file, but no new data is pulled.")}catch(e){}
  if(!ok)return;f.textContent="Disconnecting…";
@@ -9405,7 +9426,7 @@ try{ensurePanels()}catch(e){}
 // Coming back from Meta's login: reopen the Partner Integrations page on the Meta chip and say how it went.
 (function(){var r=null;try{var q=new URLSearchParams(location.search);r=q.get("meta");if(r){q.delete("meta");history.replaceState(null,"",location.pathname+(q.toString()?"?"+q.toString():""))}}catch(e){}
  if(!r)return;var tries=0;
- var msg={connected:"Connected. The first pull has started and can take a few minutes.",denied:"Meta did not share any access. Press Connect with Meta to try again.",none:"Meta did not share any ad accounts. Press Connect with Meta and tick at least one.",error:"Something went wrong connecting to Meta. Press Connect with Meta to try again.",choose:""};
+ var msg={connected:"Connected. The first pull has started and can take a few minutes.",denied:"Meta did not share any access. Press Connect with Meta to try again.",none:"Meta did not share any active ad accounts. Press Connect with Meta and tick at least one active ad account.",error:"Something went wrong connecting to Meta. Press Connect with Meta to try again.",choose:""};
  (function go(){tries++;if(typeof goToStep!=="function"||!el("partnerIntegrationsGrid")&&tries<40){if(tries<40)setTimeout(go,500);return}
   try{goToStep("partnerIntegrations")}catch(e){}try{var _n=0;(function _t(){_n++;var _s=document.getElementById("step-partnerIntegrations");if(_s&&!_s.classList.contains("active")){try{goToStep("partnerIntegrations")}catch(e){}}if(_n<10)setTimeout(_t,1000)})()}catch(e){}
   setTimeout(function(){try{ensurePanels();var c=el("metaConnCard");if(c&&c.style.display==="none")window.partnerChipOpen("meta");var f=el("metaConnFlag");if(f&&msg[r])f.textContent=msg[r]}catch(e){}},1200)})()})();
