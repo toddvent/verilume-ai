@@ -4687,6 +4687,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
     <p class="lede">Where this account's ad platforms and reputation/listening vendors connect in. Click the <span class="ai-thought-icon" style="display:inline-flex;position:relative;top:5px;">💭</span> on any partner for what connecting it actually involves — none of these have a live connection wired up yet, so this is guidance, not a working "Connect" button.</p>
     <div class="sk-card" style="margin:0 0 18px;"><div class="sk-card-body" style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;"><div><b>Partner Capability Requests</b><div class="hint">Ask for MMM, DMA match-market or neuroscience testing from an outside specialist.</div></div><button type="button" class="btn-primary" onclick="goToStep('partnerRequests')">Open requests →</button></div></div>
 <div id="partnerIntegrationsGrid"><p class="hint">Loading…</p></div>
+<div id="partnerChipPanels" style="margin:0 0 8px;"></div>
 
     
     <div id="partnersVendorsSection" style="border:1px solid var(--line);border-radius:10px;padding:14px 16px 16px;margin:20px 0 0;">
@@ -5527,14 +5528,18 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
  </div>
 </div>
 
-    <div class="sk-card" id="metaConnCard">
+    <div class="sk-card" id="metaConnCard" style="display:none;margin-top:16px;">
  <div class="sk-card-head media"><div class="htext"><h3>Meta ads (read-only)</h3><div class="kicker">Facebook &amp; Instagram · daily delivery numbers</div></div><div class="hicon">&#9654;</div></div>
  <div class="sk-card-body">
   <p style="font-size:0.875rem;color:var(--muted);margin:0 0 12px;">Connect one Meta ad account and Verilume stores its daily impressions, spend and clicks (up to 25 months back, then a fresh pull each morning, Eastern time) so Meta results sit beside your website and booking data. Verilume only reads. It cannot create, change or pause ads, and it never uses this data for advertising or shows it to anyone outside your account.</p>
   <div id="metaConnState" class="hint" style="margin:0 0 12px;" aria-live="polite"></div>
   <div id="metaConnForm">
+   <ol style="font-size:0.875rem;margin:0 0 12px;padding-left:20px;display:grid;gap:6px;">
+    <li>In Meta Business Settings, open <b>Accounts &rarr; Ad accounts</b> and select your ad account.</li>
+    <li>Choose <b>Assign partner</b>, enter Verilume's Business ID <b id="metaPartnerId">(ask Verilume support)</b>, and give it <b>View performance</b> access only.</li>
+    <li>Enter the ad account ID below and connect.</li>
+   </ol>
    <div class="field"><label for="metaConnAdId">Ad account ID</label><input type="text" id="metaConnAdId" placeholder="e.g. 1234567890123456" autocomplete="off"></div>
-   <div class="field"><label for="metaConnToken">Access token</label><input type="password" id="metaConnToken" placeholder="Paste the token with ads_read access" autocomplete="off" spellcheck="false"><span class="hint" style="display:block;margin-top:4px;">Share the ad account with the Verilume business in Meta Business Settings, then create a token with the ads_read permission. The token is checked with Meta, stored encrypted, and never shown again.</span></div>
    <div class="btn-row"><button type="button" class="btn-primary" id="metaConnSave" onclick="metaConnSave()">Connect ad account</button></div>
   </div>
   <div id="metaConnActions" class="btn-row" style="display:none;margin-top:4px;gap:10px;flex-wrap:wrap;">
@@ -9264,13 +9269,24 @@ function renderTable(d){
  var cur=rows[0].currency;
  box.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:0.8125rem;font-variant-numeric:tabular-nums;"><caption style="text-align:left;font-weight:600;padding:0 0 6px;">Latest days from Meta</caption><thead><tr><th style="text-align:left;padding:4px 8px;">Day</th><th style="text-align:right;padding:4px 8px;">Impressions</th><th style="text-align:right;padding:4px 8px;">Spend</th><th style="text-align:right;padding:4px 8px;">Clicks</th></tr></thead><tbody>'+
  rows.slice(-14).reverse().map(function(r){return'<tr><td style="padding:4px 8px;">'+esc(r.day)+'</td><td style="text-align:right;padding:4px 8px;">'+n0(r.impressions)+'</td><td style="text-align:right;padding:4px 8px;">'+money(r.spend,r.currency||cur)+'</td><td style="text-align:right;padding:4px 8px;">'+n0(r.clicks)+'</td></tr>'}).join("")+'</tbody></table>'}
+// Keeps the Meta chips on the Partner Integrations page in step with the real connection.
+function patchChips(v){
+ window.__metaView=v;
+ document.querySelectorAll(".partner-card").forEach(function(c){
+  var n=c.querySelector(".partner-card-name");if(!n||n.textContent.trim()!=="Meta")return;
+  var p=c.querySelector(".partner-status-pill");if(!p)return;
+  var txt=v&&v.demo?"Demo data":v&&v.connected?(v.status==="connected"?"Connected — live data flowing":"Connected — needs attention"):"Not connected yet";
+  p.textContent=txt;p.classList.toggle("is-connected",!!(v&&v.connected&&(v.status==="connected"||v.demo)))})}
 function render(v){
  var st=el("metaConnState"),form=el("metaConnForm"),act=el("metaConnActions");if(!st)return;
- if(!v.keyConfigured){st.textContent="Meta connections are not switched on for Verilume yet. Ask Verilume support to finish setup.";form.style.display="none";act.style.display="none";return}
+ patchChips(v);
+ var pid=el("metaPartnerId");if(pid&&v.partnerBusinessId)pid.textContent=v.partnerBusinessId;
+ if(v.demo){form.style.display="none";act.style.display="none";var dc=v.coverage;st.innerHTML="<b>Demo data.</b> These are sample Meta numbers for the demo account, sized to its Paid Social plan. No real Meta ad account is connected."+(dc&&dc.days?" "+dc.days+" days shown ("+esc(dc.first)+" to "+esc(dc.last)+").":"");return}
+ if(!v.configured){st.textContent="Meta connections are not switched on for Verilume yet. Ask Verilume support to finish setup.";form.style.display="none";act.style.display="none";return}
  if(!v.connected){st.textContent="Not connected.";form.style.display="";act.style.display="none";el("metaConnTable").innerHTML="";return}
  form.style.display="none";act.style.display="flex";
- var line="Connected to "+esc(v.accountName||("ad account "+v.adAccountId))+" (ID "+esc(v.adAccountId)+(v.currency?", "+esc(v.currency):"")+(v.timeZone?", "+esc(v.timeZone):"")+"). Token ending "+esc(v.tokenLast4||"····")+".";
- if(v.status&&v.status!=="connected")line+=" <b>Needs attention:</b> "+(v.status==="token_invalid"?"Meta no longer accepts this token. Disconnect and connect again with a new token.":v.status==="no_access"?"this token cannot read the ad account. Check the account is still shared with Verilume.":esc(v.lastError||"the last pull failed; it will try again tomorrow."));
+ var line="Connected to "+esc(v.accountName||("ad account "+v.adAccountId))+" (ID "+esc(v.adAccountId)+(v.currency?", "+esc(v.currency):"")+(v.timeZone?", "+esc(v.timeZone):"")+").";
+ if(v.status&&v.status!=="connected")line+=" <b>Needs attention:</b> "+(v.status==="no_access"?"Verilume can no longer see this ad account. Check it is still shared with Verilume's Business ID.":v.status==="token_invalid"?"Verilume's own Meta connection needs attention. Support has been notified.":esc(v.lastError||"the last pull failed; it will try again tomorrow."));
  var r=v.lastRun,cov=v.coverage;
  if(r)line+=" "+(r.status==="running"?"First pull running now. Longer histories can take a few minutes.":"Last pull "+esc(fmt(r.finishedat||r.startedat))+": "+(r.status==="ok"?"complete":r.status==="partial"?"partly complete":"failed")+".");
  else line+=" Waiting for the first pull.";
@@ -9280,15 +9296,42 @@ function loadRows(){call("GET","meta-daily?by=day").then(function(d){render(d.vi
 window.metaConnLoad=function(){if(!acct()||!tok()||!el("metaConnCard"))return;call("GET","meta-connection").then(function(v){render(v);if(v.connected)loadRows()}).catch(function(){var f=el("metaConnFlag");if(f)f.textContent="Could not load the Meta connection. Try again shortly."})};
 window.metaConnSave=function(){var f=el("metaConnFlag"),b=el("metaConnSave");var by="";try{by=typeof state!=="undefined"&&state.userName||""}catch(e){}
  f.textContent="Checking with Meta…";b.disabled=true;
- call("POST","meta-connection",{adAccountId:el("metaConnAdId").value,token:el("metaConnToken").value,by:by}).then(function(v){el("metaConnToken").value="";render(v);f.textContent="Connected. The first pull has started and can take a few minutes.";setTimeout(loadRows,15000)}).catch(function(e){f.textContent=e.message||"Could not connect."}).then(function(){b.disabled=false})};
+ call("POST","meta-connection",{adAccountId:el("metaConnAdId").value,by:by}).then(function(v){render(v);f.textContent="Connected. The first pull has started and can take a few minutes.";setTimeout(loadRows,15000)}).catch(function(e){f.textContent=e.message||"Could not connect."}).then(function(){b.disabled=false})};
 window.metaConnDisconnect=function(del){var f=el("metaConnFlag");
  var ok=true;try{ok=window.confirm(del?"Disconnect Meta and delete all Meta numbers Verilume has stored for this account? This cannot be undone.":"Disconnect Meta? Numbers already stored stay on file, but no new data is pulled.")}catch(e){}
  if(!ok)return;f.textContent="Disconnecting…";
  call("DELETE","meta-connection"+(del?"?deleteData=1":"")).then(function(v){render(v);el("metaConnTable").innerHTML="";f.textContent=del?"Disconnected. Stored Meta data was deleted.":"Disconnected."}).catch(function(e){f.textContent=e.message||"Could not disconnect."})};
-function hook(n){var f=window[n];if(typeof f!=="function"||f.__metac)return;var w=function(){var r=f.apply(this,arguments);try{window.metaConnLoad()}catch(e){}return r};w.__metac=1;window[n]=w}
-hook("ptnrIdsLoad");hook("KA");
+
+// The connection panels open from the partner chips (Partner Integrations page), not from Train the Brain.
+var PANELS={meta:"metaConnCard",ga4:"ga4HistoryCard"};
+function ensurePanels(){
+ var host=el("partnerChipPanels");if(!host)return null;
+ Object.keys(PANELS).forEach(function(k){var c=el(PANELS[k]);if(c&&c.parentNode!==host){c.style.display="none";c.style.marginTop="16px";host.appendChild(c)}});
+ return host}
+window.partnerChipOpen=function(key){
+ var host=ensurePanels();if(!host)return;var target=el(PANELS[key]);if(!target)return;
+ var wasOpen=target.style.display!=="none";
+ Object.keys(PANELS).forEach(function(k){var c=el(PANELS[k]);if(c)c.style.display="none"});
+ if(wasOpen)return;
+ target.style.display="";
+ try{if(key==="meta")window.metaConnLoad();if(key==="ga4")window.ga4HistLoad()}catch(e){}
+ try{target.scrollIntoView({behavior:"smooth",block:"start"})}catch(e){}};
+function wireChips(){
+ var map={"Meta":"meta","Google Analytics 4":"ga4"};
+ document.querySelectorAll(".partner-card").forEach(function(c){
+  var n=c.querySelector(".partner-card-name");if(!n)return;var key=map[n.textContent.trim()];if(!key||c.__wired)return;
+  c.__wired=1;c.style.cursor="pointer";c.setAttribute("role","button");c.setAttribute("tabindex","0");
+  c.setAttribute("aria-label","Open "+n.textContent.trim()+" settings");
+  var h=document.createElement("div");h.className="hint";h.style.marginTop="8px";h.textContent="Open settings →";c.appendChild(h);
+  c.addEventListener("click",function(){window.partnerChipOpen(key)});
+  c.addEventListener("keydown",function(e){if(e.key==="Enter"||e.key===" "){e.preventDefault();window.partnerChipOpen(key)}})})}
+function afterGrid(){ensurePanels();wireChips();if(window.__metaView)patchChips(window.__metaView);if(acct()&&tok())call("GET","meta-connection").then(patchChips).catch(function(){})}
+function hook(n){var f=window[n];if(typeof f!=="function"||f.__metac)return;var w=function(){var r=f.apply(this,arguments);try{afterGrid()}catch(e){}return r};w.__metac=1;window[n]=w}
+hook("Lu");
+try{ensurePanels()}catch(e){}
 var c=el("metaConnCard");if(c&&"IntersectionObserver"in window){new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting&&!G.loaded){G.loaded=true;window.metaConnLoad()}})}).observe(c)}
 })();</script>
+
 
 <script src="/vl-chrome.js" data-vl="sitefooter"></script>
 </body>

@@ -26639,10 +26639,10 @@ function startGa4DailySchedule(){
 
 // ---------------------------------------------------------------------
 // Meta Ads (ads_read) — read-only daily delivery pull. 2026-11-27.
-// A client shares their ad account with the Verilume business portfolio; a system-user token with ads_read is entered on the
-// client's Train the Brain page. We read ad-level daily delivery (impressions, reach, spend, clicks) and nothing else. We never
-// create, edit or delete anything in Meta. The token is sealed (AES-256-GCM) with META_TOKEN_KEY before it touches the database;
-// without that key set, tokens are refused rather than stored in the clear. The token is never returned by any endpoint.
+// A client shares their ad account with Verilume's Meta business as a partner (View performance) and enters the ad account ID on the
+// Partner Integrations page. Verilume reads it with ONE Verilume-owned system-user token (META_SYSTEM_USER_TOKEN, ads_read); clients never
+// see or enter a token. We read ad-level daily delivery (impressions, reach, spend, clicks) and nothing else. We never create, edit or
+// delete anything in Meta. The token goes in the Authorization header, never in a URL.
 // Dates are the ad account's own reporting dates (Meta reports in the ad account time zone), stored as given.
 // Reach is a per-ad, per-day count of people; it cannot be added up across ads or days, so aggregates leave it empty.
 // Plain lowercase column names.
@@ -26700,26 +26700,9 @@ createTableIfNeeded(`
   );
 `);
 
-function metaKey(){
-  const k = process.env.META_TOKEN_KEY;
-  return k && String(k).length >= 16 ? crypto.createHash('sha256').update(String(k)).digest() : null;
-}
-function metaSeal(token){
-  const key = metaKey(); if (!key) return null;
-  const iv = crypto.randomBytes(12);
-  const c = crypto.createCipheriv('aes-256-gcm', key, iv);
-  const ct = Buffer.concat([c.update(String(token), 'utf8'), c.final()]);
-  return 'v1:' + iv.toString('base64') + ':' + c.getAuthTag().toString('base64') + ':' + ct.toString('base64');
-}
-function metaOpen(sealed){
-  const key = metaKey(); if (!key || !sealed) return null;
-  const p = String(sealed).split(':'); if (p.length !== 4 || p[0] !== 'v1') return null;
-  try {
-    const d = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(p[1], 'base64'));
-    d.setAuthTag(Buffer.from(p[2], 'base64'));
-    return Buffer.concat([d.update(Buffer.from(p[3], 'base64')), d.final()]).toString('utf8');
-  } catch (e){ return null; }
-}
+// Verilume's own system-user token (Meta Business Settings > System users, ads_read). One token for the whole platform; clients never see
+// or enter a token. A client shares their ad account with Verilume's Meta business as a partner, and this token reads it.
+function metaSystemToken(){ const t = String(process.env.META_SYSTEM_USER_TOKEN || '').trim(); return t.length >= 20 ? t : null; }
 function metaAdAccountId(v){ const d = String(v || '').replace(/^act_/i, '').replace(/\s+/g, ''); return /^\d{5,20}$/.test(d) ? d : null; }
 
 // One Graph API GET. The token goes in the Authorization header, never in the URL, so it cannot land in a log line.
@@ -26776,8 +26759,8 @@ function metaStoreRows(accountId, rows){
 async function metaPullAccount(accountId, forceBackfill){
   const conn = db.prepare('SELECT * FROM account_meta_connections WHERE accountid = ?').get(accountId);
   if (!conn) return { ok: false, reason: 'not_connected', message: 'No Meta ad account is connected.' };
-  const token = metaOpen(conn.tokenenc);
-  if (!token) return { ok: false, reason: 'no_token', message: 'The saved token cannot be read. Reconnect the ad account.' };
+  const token = metaSystemToken();
+  if (!token) return { ok: false, reason: 'not_configured', message: 'Verilume\'s Meta connection is not set up on this server yet.' };
   const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random();
   const today = pdToday(); const toDay = pdAddDays(today, -1);
   const backfill = !!forceBackfill || !conn.backfilldoneat;
@@ -26806,12 +26789,13 @@ async function metaPullAccount(accountId, forceBackfill){
 
 // Hourly look; each connected account is pulled once per Eastern day, after 5am Eastern.
 async function metaTick(){
-  if (!metaKey()) return;
+  try { metaDemoRefresh(); } catch (e){ console.error('[meta-demo] refresh failed:', e && e.message); }
+  if (!metaSystemToken()) return;
   const hour = Number(new Intl.DateTimeFormat('en-US', { timeZone: PD_TZ, hour: '2-digit', hour12: false }).format(new Date()));
   if (hour < 5) return;
   const todayEt = pdToday();
   const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: PD_TZ });
-  const conns = db.prepare("SELECT accountid FROM account_meta_connections WHERE tokenenc IS NOT NULL AND status IN ('connected','error')").all();
+  const conns = db.prepare("SELECT accountid FROM account_meta_connections WHERE status IN ('connected','error')").all();
   for (const c of conns){
     const last = db.prepare("SELECT startedat FROM meta_pull_runs WHERE accountid = ? AND status IN ('ok','partial') ORDER BY startedat DESC LIMIT 1").get(c.accountid);
     if (last && fmt.format(new Date(last.startedat)) === todayEt) continue;
@@ -26828,15 +26812,69 @@ function startMetaDailySchedule(){
   metaTimer = setInterval(tick, 60 * 60 * 1000);
 }
 
+// Demo accounts only: sample Meta delivery numbers sized to the account's own Paid Social plan, so the travel demo shows the
+// Meta card working without a real ad account (and without any client's numbers). Rows carry DEMO- ids and the connection
+// row says "demo", so they can never be mistaken for pulled data. Safe to re-run; it replaces only its own DEMO- rows.
+const META_DEMO_SHARE = 0.55; // share of the plan's Paid Social spend that the demo puts on Meta
+const META_DEMO_ADS = [
+  { c: 'DEMO-C1', cn: 'Prospecting | Video | Voyages',      s: 'DEMO-S1', sn: 'Travelers 45-74 | Lookalike',  a: 'DEMO-A1', an: 'Video 15s - Open Water',    share: 0.16, cpm: 10.5, ctr: 0.0090 },
+  { c: 'DEMO-C1', cn: 'Prospecting | Video | Voyages',      s: 'DEMO-S1', sn: 'Travelers 45-74 | Lookalike',  a: 'DEMO-A2', an: 'Video 30s - Ports of Call', share: 0.12, cpm: 11.2, ctr: 0.0078 },
+  { c: 'DEMO-C1', cn: 'Prospecting | Video | Voyages',      s: 'DEMO-S2', sn: 'Past inquirers | Interest',    a: 'DEMO-A3', an: 'Video 15s - Dining',        share: 0.10, cpm: 12.4, ctr: 0.0086 },
+  { c: 'DEMO-C2', cn: 'Prospecting | Carousel | Itineraries', s: 'DEMO-S3', sn: 'Affluent travelers | Interest', a: 'DEMO-A4', an: 'Carousel - Mediterranean',  share: 0.14, cpm: 13.1, ctr: 0.0112 },
+  { c: 'DEMO-C2', cn: 'Prospecting | Carousel | Itineraries', s: 'DEMO-S3', sn: 'Affluent travelers | Interest', a: 'DEMO-A5', an: 'Carousel - Alaska',         share: 0.10, cpm: 12.8, ctr: 0.0104 },
+  { c: 'DEMO-C3', cn: 'Retargeting | Site visitors',        s: 'DEMO-S4', sn: 'Visited in last 30 days',      a: 'DEMO-A6', an: 'Static - Book with us',     share: 0.14, cpm: 17.5, ctr: 0.0165 },
+  { c: 'DEMO-C3', cn: 'Retargeting | Site visitors',        s: 'DEMO-S4', sn: 'Visited in last 30 days',      a: 'DEMO-A7', an: 'Static - Limited offer',    share: 0.10, cpm: 18.2, ctr: 0.0152 },
+  { c: 'DEMO-C4', cn: 'Awareness | Brand',                  s: 'DEMO-S5', sn: 'Broad | 35+ US',               a: 'DEMO-A8', an: 'Video 6s - Brand',          share: 0.14, cpm: 7.9,  ctr: 0.0042 }
+];
+function metaDemoNoise(key){ let x = 7; for (let i = 0; i < key.length; i++) x = (x * 31 + key.charCodeAt(i)) >>> 0; return (x % 1000) / 1000; }
+function metaSeedDemo(accountId){
+  if (!Object.values(DEMO_ACCOUNTS).includes(accountId)) throw new Error('not a demo account');
+  const toDay = pdAddDays(pdToday(), -1);
+  const lines = db.prepare(`SELECT p.channel, p.budget, p.dropDate, p.hitDate, p.endDate FROM channel_planning_details p JOIN campaigns c ON c.id = p.campaignId WHERE c.accountId = ? AND p.channel = 'Paid Social'`).all(accountId);
+  const plan = {};
+  lines.forEach(p => { const sp = pdAllocate(p.channel, p.budget, p.dropDate, p.hitDate, p.endDate); Object.keys(sp).forEach(d => { plan[d] = (plan[d] || 0) + sp[d]; }); });
+  const days = Object.keys(plan).filter(d => d <= toDay).sort();
+  if (!days.length) throw new Error('this demo account has no Paid Social plan lines to size the sample numbers from');
+  db.prepare("DELETE FROM account_meta_daily WHERE accountid = ? AND adid LIKE 'DEMO-%'").run(accountId);
+  const rows = [];
+  days.forEach(day => {
+    const dow = new Date(day + 'T00:00:00Z').getUTCDay();
+    const weekend = (dow === 0 || dow === 6) ? 0.9 : 1.0;
+    META_DEMO_ADS.forEach(ad => {
+      const spend = plan[day] * META_DEMO_SHARE * ad.share * weekend * (0.88 + 0.24 * metaDemoNoise(day + ad.a));
+      const impressions = Math.round(spend / (ad.cpm * (0.94 + 0.12 * metaDemoNoise(ad.a + day))) * 1000);
+      const clicks = Math.round(impressions * ad.ctr * (0.9 + 0.2 * metaDemoNoise(day + ad.a + 'c')));
+      const reach = Math.round(impressions * (0.58 + 0.1 * metaDemoNoise(ad.a + day + 'r')));
+      rows.push({ campaign_id: ad.c, campaign_name: ad.cn, adset_id: ad.s, adset_name: ad.sn, ad_id: ad.a, ad_name: ad.an, impressions: String(impressions), reach: String(reach), spend: spend.toFixed(2), clicks: String(clicks), account_currency: 'USD', date_start: day });
+    });
+  });
+  const stored = metaStoreRows(accountId, rows);
+  const now = new Date().toISOString();
+  db.prepare(`INSERT INTO account_meta_connections (accountid, adaccountid, tokenenc, tokenlast4, status, accountname, currency, timezonename, connectedat, connectedby, lasterror, backfilldoneat, updatedat)
+    VALUES (?,?,NULL,NULL,'demo',?,?,?,?,?,NULL,?,?)
+    ON CONFLICT(accountid) DO UPDATE SET status='demo', accountname=excluded.accountname, updatedat=excluded.updatedat WHERE account_meta_connections.status = 'demo'`)
+    .run(accountId, 'DEMO', 'Sample demo ad account', 'USD', 'America/New_York', now, 'demo seed', now, now);
+  return { stored, from: days[0], to: days[days.length - 1] };
+}
+// Keeps the demo's sample numbers current through yesterday; only touches accounts already marked demo.
+function metaDemoRefresh(){
+  db.prepare("SELECT accountid FROM account_meta_connections WHERE status = 'demo'").all().forEach(c => {
+    if (!Object.values(DEMO_ACCOUNTS).includes(c.accountid)) return;
+    const last = db.prepare("SELECT MAX(day) AS d FROM account_meta_daily WHERE accountid = ? AND adid LIKE 'DEMO-%'").get(c.accountid);
+    if (!last || !last.d || last.d < pdAddDays(pdToday(), -1)){ try { metaSeedDemo(c.accountid); } catch (e){ console.error('[meta-demo]', c.accountid, e && e.message); } }
+  });
+}
+
 function metaConnectionView(accountId){
   const c = db.prepare('SELECT * FROM account_meta_connections WHERE accountid = ?').get(accountId);
   const lastRun = db.prepare('SELECT startedat, finishedat, status, fromday, today, rowsstored, message FROM meta_pull_runs WHERE accountid = ? ORDER BY startedat DESC LIMIT 1').get(accountId) || null;
   const coverage = db.prepare('SELECT MIN(day) AS first, MAX(day) AS last, COUNT(DISTINCT day) AS days, COUNT(*) AS rows FROM account_meta_daily WHERE accountid = ?').get(accountId);
   return {
-    keyConfigured: !!metaKey(), graphVersion: META_GRAPH_VERSION, historyMonths: 25, repullDays: META_REPULL_DAYS,
-    connected: !!(c && c.tokenenc), status: c ? c.status : null,
+    configured: !!metaSystemToken(), partnerBusinessId: process.env.META_PARTNER_BUSINESS_ID ? String(process.env.META_PARTNER_BUSINESS_ID).replace(/\D/g, '') : null,
+    graphVersion: META_GRAPH_VERSION, historyMonths: 25, repullDays: META_REPULL_DAYS,
+    connected: !!c, demo: !!(c && c.status === 'demo'), status: c ? c.status : null,
     adAccountId: c ? c.adaccountid : null, accountName: c ? c.accountname : null, currency: c ? c.currency : null, timeZone: c ? c.timezonename : null,
-    tokenLast4: c ? c.tokenlast4 : null, connectedAt: c ? c.connectedat : null, lastError: c ? c.lasterror : null,
+    connectedAt: c ? c.connectedat : null, lastError: c ? c.lasterror : null,
     lastRun, coverage
   };
 }
@@ -40417,26 +40455,24 @@ Submit your response via the campaign_intake_turn tool.`;
       if (!account) return sendJson(res, 404, { error: 'account not found' });
       if (req.method === 'POST'){
         const body = await readBody(req).catch(() => ({})) || {};
-        if (!metaKey()) return sendJson(res, 503, { error: 'Meta connections are not switched on for this server yet. Ask Verilume support to finish setup.' });
+        const sysToken = metaSystemToken();
+        if (!sysToken) return sendJson(res, 503, { error: 'Meta connections are not switched on for Verilume yet. Ask Verilume support to finish setup.' });
         const adId = metaAdAccountId(body.adAccountId);
         if (!adId) return sendJson(res, 400, { error: 'Enter the ad account ID as numbers only (it may start with act_).' });
-        const token = String(body.token || '').trim();
-        if (token.length < 20 || /\s/.test(token)) return sendJson(res, 400, { error: 'Paste the full access token, with no spaces.' });
         let info;
-        try { info = await metaGraph('act_' + adId, { fields: 'name,currency,timezone_name,account_status' }, token); }
+        try { info = await metaGraph('act_' + adId, { fields: 'name,currency,timezone_name,account_status' }, sysToken); }
         catch (e){
-          return sendJson(res, 400, { error: e.metaCode === 190 ? 'Meta did not accept this token. Check that it is current and was created for the Verilume app.'
-            : ([10, 200, 294].includes(e.metaCode) ? 'This token cannot read that ad account. Share the ad account with the Verilume business, then try again.'
-            : 'Meta could not open that ad account: ' + String(e.message).slice(0, 160)) });
+          if (e.metaCode === 190){ console.error('[meta] Verilume system-user token was rejected by Meta (code 190). Replace META_SYSTEM_USER_TOKEN.'); return sendJson(res, 503, { error: 'Verilume\'s own Meta connection needs attention. Support has been notified; please try again later.' }); }
+          if ([10, 100, 200, 294].includes(e.metaCode)) return sendJson(res, 400, { error: 'Verilume cannot see that ad account yet. In Meta Business Settings, open Accounts > Ad accounts, select it, choose Assign partner, enter Verilume\'s Business ID' + (process.env.META_PARTNER_BUSINESS_ID ? ' (' + String(process.env.META_PARTNER_BUSINESS_ID).replace(/\D/g, '') + ')' : '') + ', and give View performance access. Then try again.' });
+          return sendJson(res, 400, { error: 'Meta could not open that ad account: ' + String(e.message).slice(0, 160) });
         }
         const now = new Date().toISOString();
-        const sealed = metaSeal(token);
         db.prepare(`INSERT INTO account_meta_connections (accountid, adaccountid, tokenenc, tokenlast4, status, accountname, currency, timezonename, connectedat, connectedby, lasterror, backfilldoneat, updatedat)
-          VALUES (?,?,?,?,?,?,?,?,?,?,NULL,NULL,?)
-          ON CONFLICT(accountid) DO UPDATE SET adaccountid=excluded.adaccountid, tokenenc=excluded.tokenenc, tokenlast4=excluded.tokenlast4, status='connected', accountname=excluded.accountname,
+          VALUES (?,?,NULL,NULL,'connected',?,?,?,?,?,NULL,NULL,?)
+          ON CONFLICT(accountid) DO UPDATE SET adaccountid=excluded.adaccountid, tokenenc=NULL, tokenlast4=NULL, status='connected', accountname=excluded.accountname,
             currency=excluded.currency, timezonename=excluded.timezonename, connectedat=excluded.connectedat, connectedby=excluded.connectedby, lasterror=NULL,
-            backfilldoneat=CASE WHEN account_meta_connections.adaccountid = excluded.adaccountid THEN account_meta_connections.backfilldoneat ELSE NULL END, updatedat=excluded.updatedat`)
-          .run(accountId, adId, sealed, token.slice(-4), 'connected', info.name || null, info.currency || null, info.timezone_name || null, now, String(body.by || '').slice(0, 120), now);
+            backfilldoneat=CASE WHEN account_meta_connections.adaccountid = excluded.adaccountid AND account_meta_connections.status != 'demo' THEN account_meta_connections.backfilldoneat ELSE NULL END, updatedat=excluded.updatedat`)
+          .run(accountId, adId, info.name || null, info.currency || null, info.timezone_name || null, now, String(body.by || '').slice(0, 120), now);
         metaPullAccount(accountId, false).catch(e => console.error('[meta-daily] start failed:', accountId, e && e.message));
       }
       if (req.method === 'DELETE'){
@@ -40461,6 +40497,13 @@ Submit your response via the campaign_intake_turn tool.`;
       const sql = 'SELECT ' + sel.replace(/ (GROUP BY|ORDER BY)/, ' FROM account_meta_daily WHERE accountid = ? AND day >= ? AND day <= ? $1') + (by === 'ad' ? ' LIMIT 20000' : ' LIMIT 5000');
       const rows = db.prepare(sql).all(accountId, from, to);
       return sendJson(res, 200, { by, from, to, view: metaConnectionView(accountId), rows });
+    }
+    if (parts.length === 5 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'accounts' && parts[4] === 'meta-demo-seed' && req.method === 'POST'){
+      if (!adminTokenOk(req)) return sendJson(res, 401, { error: 'unauthorized' });
+      const accountId = decodeURIComponent(parts[3]);
+      if (!Object.values(DEMO_ACCOUNTS).includes(accountId)) return sendJson(res, 400, { error: 'Sample Meta numbers can only be added to a demo account.' });
+      try { return sendJson(res, 200, Object.assign({ ok: true }, metaSeedDemo(accountId))); }
+      catch (e){ return sendJson(res, 400, { error: e.message }); }
     }
     if (parts.length === 5 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'accounts' && parts[4] === 'meta-pull' && req.method === 'POST'){
       if (!adminTokenOk(req)) return sendJson(res, 401, { error: 'unauthorized' });
