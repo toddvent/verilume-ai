@@ -166,7 +166,7 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
       <div class="meta-row">
         <span><b>Owner</b> Todd Brown</span>
         <span><b>System</b> verilume.ai — <code>backend/server.js</code></span>
-        <span><b>Verified against</b> production code, 2026-09-12</span>
+        <span><b>Verified against</b> production code, 2026-09-12; Meta and Google connections added 2026-11-27 (tested against stubbed responses only)</span>
         <span><b>Status</b> Live in production</span>
       </div>
     </header>
@@ -187,11 +187,13 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
           the narrative layer on top of it.</p>
         </div>
         <div class="finding-tile">
-          <span class="pill pill--flagged">Not integrated</span>
-          <h4>No Meta (Facebook/Instagram) connector</h4>
-          <p>No Meta-related environment variable, API call, or field exists
-          anywhere in <code>server.js</code> today. If this is planned, it's not
-          started.</p>
+          <span class="pill pill--warning">Built, not yet run live</span>
+          <h4>Meta, Google Analytics 4 and Google Ads connect in one click</h4>
+          <p>Clients press <b>Connect with Meta</b> or <b>Connect with Google</b>
+          on the Partner Integrations chips, sign in, and pick an account. No
+          IDs, tokens or Business Manager steps. Tested against stubbed
+          responses only; needs the Meta and Google apps approved before real
+          clients can use it.</p>
         </div>
         <div class="finding-tile">
           <span class="pill pill--warning">Metadata only</span>
@@ -264,7 +266,9 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
           <thead><tr><th>Vendor</th><th>Used for</th><th>Env vars</th><th>Fallback when unconfigured</th></tr></thead>
           <tbody>
             <tr><td>HubSpot</td><td>Lead sync (server-side only, browser never talks to HubSpot directly)</td><td class="mono">HUBSPOT_ACCESS_TOKEN</td><td>Lead is always persisted locally regardless (<code>GET /api/leads</code>)</td></tr>
-            <tr><td>Google Analytics 4</td><td>Live GA4 Data API reporting for connected accounts</td><td class="mono">GA4_SERVICE_ACCOUNT_KEY_JSON</td><td>Reporting stays not-configured for that account</td></tr>
+            <tr><td>Google Analytics 4</td><td>GA4 reporting and stored daily history. Clients connect with Google sign-in; the older service account is a fallback.</td><td class="mono">GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, META_TOKEN_KEY (fallback: GA4_SERVICE_ACCOUNT_KEY_JSON)</td><td>The chip says connections are being set up</td></tr>
+            <tr><td>Google Ads</td><td>Daily campaign spend, clicks and conversions; clients connect with Google sign-in</td><td class="mono">GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, META_TOKEN_KEY; optional GOOGLE_ADS_DEVELOPER_TOKEN, GOOGLE_ADS_API_VERSION</td><td>The chip says connections are being set up</td></tr>
+            <tr><td>Meta (Facebook and Instagram)</td><td>Daily ad delivery (impressions, reach, spend, clicks); clients connect with Meta login</td><td class="mono">META_APP_SECRET, META_TOKEN_KEY, PUBLIC_BASE_URL (optional: META_APP_ID)</td><td>The chip says connections are being set up</td></tr>
           </tbody>
         </table>
       </div>
@@ -311,40 +315,45 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
 
       <h3>Google Analytics 4 (GA4)</h3>
       <p>Website behavior data — sessions, users, conversions, channel/traffic-source
-      breakdown. The lightest-weight of the four platform integrations to set
-      up, and the only one with a real, working connector today.</p>
+      breakdown. Connected by the client in one step from the Google Analytics 4 chip.</p>
       <div class="two-col">
         <div class="card">
           <div class="card-title">What Verilume does</div>
           <ol>
-            <li>Hold a Google Cloud project + service account with the GA4
-            Data API enabled (one-time, org-wide — not per client).</li>
-            <li>Generate that service account's JSON key and set it as
-            <code class="mono">GA4_SERVICE_ACCOUNT_KEY_JSON</code> in
-            production.</li>
-            <li>Record the client's GA4 Account ID and Property ID once
-            provided (captured directly on the Analytics Integrations form).</li>
+            <li>Hold a Google Cloud project with the Analytics Data and Admin APIs enabled and a Google sign-in app (<code class="mono">GOOGLE_OAUTH_CLIENT_ID</code>, <code class="mono">GOOGLE_OAUTH_CLIENT_SECRET</code>), verified by Google for the read-only Analytics scope.</li>
+            <li>Show <b>Connect with Google</b> on the chip. The client signs in and picks a property; Verilume saves the property and keeps a sealed refresh token (AES-256-GCM, key <code class="mono">META_TOKEN_KEY</code>), never shown or returned.</li>
+            <li>Read with the client's login. The older service-account route still works for accounts that already use it.</li>
           </ol>
         </div>
         <div class="card">
-          <div class="card-title">What the client's team grants</div>
+          <div class="card-title">What the client's team does</div>
           <ol>
-            <li>In GA4's own Property Access Management, add Verilume's
-            service account email as a <b>Viewer</b> on the property to be
-            reported on.</li>
-            <li>Provide the GA4 Account ID and Property ID (visible in their
-            own GA4 Admin settings).</li>
+            <li>Press Connect with Google, sign in with a login that can see the property, and choose it. No Administrator role, IDs or Viewer grants.</li>
+            <li>Optionally switch on stored history. Disconnect any time; it revokes access at Google.</li>
           </ol>
         </div>
       </div>
-      <p class="cite">Auth model: single per-property Viewer grant &middot;
-      Typical lead time: same-day once the client actions the grant &mdash;
-      no approval process on either side &middot; Build status:
-      <span class="pill pill--warning">Connector built, dormant</span>
-      real GA4 Data API connector exists (<code>GET /api/accounts/:id/ga4-report</code>),
-      but no production <code class="mono">GA4_SERVICE_ACCOUNT_KEY_JSON</code>
-      credential is set yet, so every account correctly reads
-      <code>not_configured</code> today.</p>
+      <p class="cite">Auth model: Google sign-in (OAuth 2.0, read-only Analytics scope) &middot;
+      Typical lead time: minutes &middot; Build status:
+      <span class="pill pill--warning">Built, not yet run with a real login</span>
+      tested against stubbed Google responses only. Endpoints:
+      <code>GET /api/accounts/:id/google-oauth-start?product=ga4</code>,
+      <code>GET /api/google/oauth/callback</code>,
+      <code>GET /api/accounts/:id/google-resources</code>,
+      <code>POST /api/accounts/:id/google-connection</code>,
+      <code>DELETE /api/accounts/:id/google-connection</code>. Until Google verifies
+      the sign-in app (a sensitive scope), logins from an app left in Testing expire after seven days.</p>
+      <div class="card">
+        <div class="card-title">Stored daily history (added 2026-11-26)</div>
+        <p>Beyond the live 30-day report, a client can switch on <b>Historical website data</b> in Train the Brain (Connect a Data Source). Verilume then pulls 25 months of daily GA4 data once, and a fresh day every morning, Eastern time, on Railway. Six optional detail sets add UTM detail (utm_id, term, content), key events by name, ecommerce, engagement depth, landing pages, and device and location. Same Viewer grant on the client's property; nothing is written to their analytics. GA4 history starts when the client's property did, and the BigQuery export is not retroactive, so linking it early matters. Details and tables are in Data Uploads &amp; Integrity, section 05c.</p>
+        <p class="cite">Build status: <span class="pill pill--warning">Built, not yet verified against real GA4</span> tested with a stubbed response only.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Meta and Google Ads (built 2026-11-27)</div>
+        <p>Both connect in one click and feed daily tables (<code class="mono">account_meta_daily</code>, <code class="mono">account_gads_daily</code>). Each is pulled once a day after 5 am Eastern with a 25-month first pull. See the Google Ads and Meta sections below.</p>
+      </div>
+        <p>Meta needs a Business app, Business Verification and App Review for ads_read (the slowest step, roughly one to two weeks). Google Ads needs a developer token and OAuth, plus client read access to the account or manager account. Neither is built; they feed the same daily table once approved.</p>
+      </div>
 
       <h3>Google Search Console</h3>
       <p>Organic search performance for the client's own website: the searches that show their site, clicks, impressions, average position, the pages that earn them, indexing problems, and Google's AI report. It feeds the Search Everywhere page. It is free to the client and needs no license.</p>
@@ -373,64 +382,57 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
       uploads feed the Search Everywhere page today (tables <code class="mono">gsc_uploads</code>, <code class="mono">gsc_rows</code>, <code class="mono">gsc_daily</code>). Whether Google's AI report is available through the API is not confirmed; until it is, that report stays an upload. Client training: <a href="training/Verilume-Search-Everywhere-Training.pdf" target="_blank" rel="noopener">Search Everywhere training PDF</a>.</p>
 
       <h3>Google Ads</h3>
-      <p>Campaign/ad group/keyword-level spend, clicks, and conversions from
-      a client's own Google Ads account.</p>
+      <p>Campaign-level spend, impressions, clicks and conversions from a client's
+      own Google Ads account, including Performance Max (read at campaign level).</p>
       <div class="two-col">
         <div class="card">
           <div class="card-title">What Verilume does</div>
           <ol>
-            <li>Apply for and hold a Google Ads API Developer Token
-            (Verilume-side, one-time — not per client).</li>
-            <li>Build the OAuth2 read connector against the Google Ads API
-            (not started).</li>
+            <li>Hold a Google Cloud project with the Google Ads API enabled, the Google sign-in app above, and the API access level Google requires (Explorer, Basic or Standard). A developer token is sent only if <code class="mono">GOOGLE_ADS_DEVELOPER_TOKEN</code> is set; the API version is <code class="mono">GOOGLE_ADS_API_VERSION</code> (default v21). Both need checking against Google's current rules before launch.</li>
+            <li>Show <b>Connect with Google</b> on the Google Ads chip. For manager accounts, list the client accounts underneath and let the client pick one.</li>
+            <li>Pull 25 months once, then each morning re-pull the last 28 days. Never create or change anything.</li>
           </ol>
         </div>
         <div class="card">
-          <div class="card-title">What the client's team grants</div>
+          <div class="card-title">What the client's team does</div>
           <ol>
-            <li>Grant Verilume's OAuth app read access to their Google Ads
-            account (or their MCC, if they manage multiple accounts under
-            one).</li>
+            <li>Press Connect with Google, sign in with a login that can see the account (read-only is enough), and choose the account.</li>
+            <li>Disconnect any time, optionally deleting stored Google Ads data.</li>
           </ol>
         </div>
       </div>
-      <p class="cite">Auth model: OAuth2 + Verilume-side Developer Token
-      &middot; Typical lead time: the client-side grant itself is fast; the
-      real gate is Verilume's own one-time Developer Token approval (Google's
-      process, days to weeks) &middot; Build status:
-      <span class="pill pill--flagged">Not built</span> no code, OAuth flow,
-      or account field exists yet.</p>
+      <p class="cite">Auth model: Google sign-in (OAuth 2.0, read-only Google Ads scope) &middot;
+      Typical lead time: minutes for the client; Google's access-level review is days to weeks &middot;
+      Build status: <span class="pill pill--warning">Built, not yet run with a real login</span>
+      tested against stubbed responses only. Read endpoint: <code>GET /api/accounts/:id/google-ads-daily</code>; staff pull:
+      <code>POST /api/ops/accounts/:id/google-ads-pull</code>.</p>
 
       <h3>Meta (Facebook/Instagram)</h3>
-      <p>Campaign/ad-set/ad-level spend, impressions, reach, and Meta's own
-      attributed conversions.</p>
+      <p>Campaign, ad set and ad-level impressions, reach, spend and clicks, one row per ad per day. Reach is only valid per ad and per day; it cannot be added up.</p>
       <div class="two-col">
         <div class="card">
           <div class="card-title">What Verilume does</div>
           <ol>
-            <li>Register and maintain a Meta Business app (Verilume-side,
-            one-time).</li>
-            <li>Complete Meta's App Review for <code class="mono">ads_read</code>
-            at scale — the slower step, not the query logic.</li>
-            <li>Generate a long-lived System User access token per client ad
-            account once the connector exists (not started).</li>
+            <li>Maintain the Meta app (<b>Verilume Reporting</b>, App ID 975169618745652) with Business Verification complete, and complete App Review for <code class="mono">ads_read</code>.</li>
+            <li>Show <b>Connect with Meta</b> on the Meta chip. Verilume exchanges the login for a long-lived token (about 60 days), seals it, and lists the ad accounts the client shared. One account connects automatically; several show a picker.</li>
+            <li>Pull 25 months once, then each morning re-pull the last 28 days. Reconnect is prompted when the login lapses.</li>
           </ol>
         </div>
         <div class="card">
-          <div class="card-title">What the client's team grants</div>
+          <div class="card-title">What the client's team does</div>
           <ol>
-            <li>Add Verilume's System User to their Business Manager.</li>
-            <li>Grant that System User <code class="mono">ads_read</code>
-            permission on the specific ad account(s) to be reported on.</li>
+            <li>Press Connect with Meta, log in with a login that can see the ad account, tick the accounts to share, and approve read-only access.</li>
+            <li>Disconnect any time. That revokes the login at Meta, and the client can also delete the stored Meta numbers.</li>
           </ol>
         </div>
       </div>
-      <p class="cite">Auth model: Meta Business app + per-account System User
-      token, <code class="mono">ads_read</code> &middot; Typical lead time:
-      slowest of the four &mdash; Meta's App Review realistically runs 1-2+
-      weeks &middot; Build status: <span class="pill pill--flagged">Not built</span>
-      no Meta-related environment variable, API call, or account field
-      exists anywhere in <code>server.js</code> today.</p>
+      <p class="cite">Auth model: Meta Login, <code class="mono">ads_read</code> &middot;
+      Typical lead time: minutes for the client; App Review is Verilume's gate (Access Verification about five days, review one to two weeks or more). Until it passes, only people with a role on the app can connect &middot;
+      Build status: <span class="pill pill--warning">Built, not yet run with a real login</span>
+      tested against stubbed Meta responses only. Endpoints: <code>GET /api/accounts/:id/meta-oauth-start</code>,
+      <code>GET /api/meta/oauth/callback</code>, <code>GET /api/accounts/:id/meta-adaccounts</code>,
+      <code>POST|GET|DELETE /api/accounts/:id/meta-connection</code>, <code>GET /api/accounts/:id/meta-daily</code>.
+      The earlier partner-sharing route with one Verilume system-user token (<code class="mono">META_SYSTEM_USER_TOKEN</code>) still works as a fallback.</p>
 
       <h3>Snowflake (Secure Data Share)</h3>
       <p>The preferred pathway for any client who already runs a Fivetran
@@ -510,9 +512,9 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
           <thead><tr><th>Pathway</th><th>Auth model</th><th>Typical lead time</th><th>Build status</th></tr></thead>
           <tbody>
             <tr><td>Snowflake</td><td>Read-only Secure Data Share</td><td>Client data-team dependent</td><td>Metadata capture only</td></tr>
-            <tr><td>GA4</td><td>Service-account Viewer grant</td><td>Same-day</td><td>Connector built, dormant on credential</td></tr>
-            <tr><td>Google Ads</td><td>OAuth2 + Developer Token</td><td>Days-weeks (Verilume's one-time token approval)</td><td>Not built</td></tr>
-            <tr><td>Meta</td><td>Business app + System User, <span class="mono">ads_read</span></td><td>1-2+ weeks (App Review)</td><td>Not built</td></tr>
+            <tr><td>GA4</td><td>Google sign-in (OAuth), read-only</td><td>Minutes</td><td>Built; stubbed tests only</td></tr>
+            <tr><td>Google Ads</td><td>Google sign-in (OAuth), read-only</td><td>Minutes for the client; Google access-level review days to weeks</td><td>Built; stubbed tests only</td></tr>
+            <tr><td>Meta</td><td>Meta login, <span class="mono">ads_read</span></td><td>Minutes for the client; Verilume's App Review 1-2+ weeks</td><td>Built; stubbed tests only</td></tr>
             <tr><td>Google Sheets</td><td>Sheets API, single-Sheet read grant</td><td>Fastest setup, ongoing staleness risk</td><td>Not built</td></tr>
           </tbody>
         </table>
@@ -618,6 +620,8 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
         <table>
           <thead><tr><th>Date</th><th>Trigger</th><th>Decision / change</th></tr></thead>
           <tbody>
+                        <tr><td class="mono">2026-11-27</td><td>"Partner Integrations is a very important feature and shouldn't be hidden. It belongs in Train the Brain." Also: "It's also within Website Traffic."</td><td>Train the Brain now has its own "Your connections" chip (Meta, Google Analytics 4, Google Ads, other partners), each with its own connected status and a Connect button that opens the right panel. The old buried item under Your numbers was removed. Meta and Google Ads daily numbers now reach Ask, the voice assistant, the Brain Dump context and the AI Brain campaign replies (connected ad platform actuals block), and appear in the integrated daily performance data. The Website Traffic page now says how to connect Google Analytics in client wording and shows a Paid media card with Meta and Google Ads totals. Facebook Login for Business: sign-in uses configuration 920867021017086 (ads_read, user access token); META_LOGIN_CONFIG_ID overrides it.</td></tr>
+<tr><td class="mono">2026-11-27</td><td>"This is a self-service platform" and "It's not just meta. It's every connection on the site."</td><td>Dropped client-pasted tokens, client-typed IDs and partner-sharing steps. Meta, Google Analytics 4 and Google Ads now connect with Connect with Meta / Connect with Google on the Partner Integrations chips: sign in, pick an account, done. Tokens are sealed and never shown. Duplicate Meta and Google Ads chips merged; chip and pop-up copy rewritten for clients. Snowflake, The Trade Desk and the listening tools stay guided because the platform needs work on the client's side first.</td></tr>
             <tr><td class="mono">2026-10-04</td><td>"This is another high level opportunity that could have integrations with Google Search Console, BrightEdge, Adobe, etc." (Search keywords in Train the Brain.)</td><td>Planned, not built. Search keywords works today from the account's own lists, typed entries and CSV upload. Next: Google Search Console as the free integration (queries the brand's own site already earns), then BrightEdge, Adobe and Semrush as licensed marketplace options, refreshed on the Monday early-morning sweep so results are ready by 8:00 AM. Pulled data would arrive as suggestions, never overwriting team edits. Same basic-service-plus-marketplace pattern as Reputation Monitoring.</td></tr>
 <tr><td class="mono">2026-10-05</td><td>"We need to update our partner integration guide to include Google Search Console."</td><td>Added a Google Search Console entry to the client setup procedures: what works today (CSV uploads recognized and previewed, brand names confirmed), the planned automatic pull (service account added as a user on the property, weekly Monday refresh, and why it matters: the in-product export is capped at 1,000 rows), and the open item that Google's AI report may not be available through the API. Linked to the new Search Everywhere training PDF. The planned item in the 2026-10-04 row is now partly built: the page and uploads exist, the connector does not.</td></tr>
 <tr><td class="mono">2026-10-05</td><td>"I missed the positioning. Are we limiting what we are actually doing by using Google in the title to represent a Search Everywhere program designed to build share on Reddit and LLM model results?" Then: "Go ahead and update."</td><td>Search Everywhere is now described as the program, with Google Search Console as its first connected source. AI answer visibility and community share (Reddit and similar) added as planned sources, licensed or official API only, nothing built. Training guide retitled to match (new Session 11, cover image).</td></tr>
@@ -649,15 +653,16 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
       <h2><span>Suggested next steps</span><span class="num">&sect; 09</span></h2>
       <ol>
         <li><strong>Add monitoring on vendor-model 404s / deprecation notices</strong> across all 5 LLM providers.</li>
-        <li><strong>Decide and scope the Meta integration</strong> if it's actually planned — nothing exists to build on top of today.</li>
+        <li><strong>Run Meta, Google Analytics 4 and Google Ads with a real login</strong> (AOV first), reconcile against Ads Manager and the MMM feed, then submit Meta App Review and Google OAuth verification.</li>
         <li><strong>Build the real Snowflake connector</strong>, or remove the metadata-capture fields if it's no longer planned.</li>
+        <li><strong>Make the remaining connections self-service where the platform allows</strong>: Snowflake and The Trade Desk need work on the client's side first, so show exactly what the client does and track the request.</li>
         <li><strong>Add per-vendor cost visibility</strong> once the integration count grows.</li>
         <li><strong>Keep &sect; 04 current as each pathway's build status changes</strong> — it replaces the standalone <code>Verilume-Integration-Setup-Procedure-2026-08-25.docx</code> deliverable specifically so setup steps don't drift out of sync with the code again; update it in the same pass as any Analytics Integrations or Ops Console change, not as a separate follow-up.</li>
       </ol>
     </section>
 
     <div class="foot">
-      Verilume — Internal Product Documentation. Re-verified 2026-09-12 —
+      Verilume — Internal Product Documentation. Meta, Google Analytics 4 and Google Ads sections updated 2026-11-27. Re-verified 2026-09-12 —
       <code>INTERVIEW_VENDOR_REGISTRY</code> model strings (gpt-4o,
       gemini-3.6-flash, grok-4.6, sonar-pro) and the 7-vendor
       <code>GET /api/ops/integration-status</code> list unchanged since the prior
