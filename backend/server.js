@@ -20747,6 +20747,36 @@ const DQ_SETS = {
     load(id){ return dqSelect('SELECT * FROM account_ga4_search WHERE accountId = ?', id).map(r => ({ year: dqNum(aliasVal(r, 'year')), week: dqNum(aliasVal(r, 'week')) || 0, adCampaign: dqStr(aliasVal(r, 'adcampaign')), adGroup: dqStr(aliasVal(r, 'adgroup')), keyword: dqStr(aliasVal(r, 'keyword')), network: dqStr(aliasVal(r, 'network')), sessions: dqNum(aliasVal(r, 'sessions')), engaged: dqNum(aliasVal(r, 'engaged')), keyevents: dqNum(aliasVal(r, 'keyevents')) })); },
     note: 'GA4 paid search comes from the weekly GA4 Google Ads export by campaign, ad group, keyword and network.'
   },
+  metaAds: {
+    label: 'Meta ads (connected)', table: 'account_meta_daily', unit: 'month', need: 'a connected Meta account (Train the Brain, Your connections)',
+    measures: {
+      spend: { label: 'Meta spend', syn: ['spend on meta ads', 'spend on meta', 'spend on facebook', 'spend on instagram', 'spend on facebook and instagram', 'meta ads spend', 'meta spend', 'facebook spend', 'instagram spend', 'facebook and instagram spend', 'meta ads ad spend', 'meta ad spend', 'facebook ad spend', 'instagram ad spend', 'facebook and instagram ad spend'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'money' },
+      impressions: { label: 'Meta impressions', syn: ['meta ads impressions', 'meta impressions', 'facebook impressions', 'instagram impressions', 'facebook and instagram impressions'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int' },
+      clicks: { label: 'Meta clicks', syn: ['meta ads clicks', 'meta clicks', 'facebook clicks', 'instagram clicks', 'facebook and instagram clicks'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int' },
+      clickRate: { label: 'Meta click-through rate', syn: ['meta ads click through rate', 'meta click through rate', 'facebook click through rate', 'instagram click through rate', 'facebook and instagram click through rate', 'meta ads ctr', 'meta ctr', 'facebook ctr', 'instagram ctr', 'facebook and instagram ctr'], aggs: ['ratio'], kind: 'pct2', ratio: ['clicks', 'impressions'], mult: 100 },
+      costPerClick: { label: 'Meta cost per click', syn: ['meta ads cost per click', 'meta cost per click', 'facebook cost per click', 'instagram cost per click', 'facebook and instagram cost per click', 'meta ads cpc', 'meta cpc', 'facebook cpc', 'instagram cpc', 'facebook and instagram cpc'], aggs: ['ratio'], kind: 'money2', ratio: ['spend', 'clicks'] },
+      cpm: { label: 'Meta cost per thousand impressions', syn: ['meta ads cpm', 'meta cpm', 'facebook cpm', 'instagram cpm', 'facebook and instagram cpm', 'meta ads cost per thousand impressions', 'meta cost per thousand impressions', 'facebook cost per thousand impressions', 'instagram cost per thousand impressions', 'facebook and instagram cost per thousand impressions'], aggs: ['ratio'], kind: 'money2', ratio: ['spend', 'impressions'], mult: 1000 }
+    },
+    dims: { campaign: { label: 'Meta campaign', syn: ['meta campaign', 'meta campaigns', 'campaign', 'campaigns'], filter: true } }, dimsOk: ['year', 'quarter', 'month'],
+    load(id){ return dqSelect("SELECT substr(day, 1, 4) AS y, substr(day, 6, 2) AS m, COALESCE(MAX(campaignname), '(unnamed)') AS campaign, SUM(impressions) AS impressions, SUM(spend) AS spend, SUM(clicks) AS clicks FROM account_meta_daily WHERE accountid = ? GROUP BY substr(day, 1, 4), substr(day, 6, 2), campaignid", id).map(r => ({ year: dqNum(r.y), month: dqNum(r.m), campaign: dqStr(r.campaign), impressions: dqNum(r.impressions), spend: dqNum(r.spend), clicks: dqNum(r.clicks) })); },
+    note: 'Meta numbers are the daily delivery pulled from the connected account each morning, totalled by month and campaign. The current month is the days so far.'
+  },
+  googleAds: {
+    label: 'Google Ads (connected)', table: 'account_gads_daily', unit: 'month', need: 'a connected Google Ads account (Train the Brain, Your connections)',
+    measures: {
+      spend: { label: 'Google Ads spend', syn: ['spend on google ads', 'google ads spend', 'google ads ad spend'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'money' },
+      impressions: { label: 'Google Ads impressions', syn: ['google ads impressions'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int' },
+      clicks: { label: 'Google Ads clicks', syn: ['google ads clicks'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int' },
+      clickRate: { label: 'Google Ads click-through rate', syn: ['google ads click through rate', 'google ads ctr'], aggs: ['ratio'], kind: 'pct2', ratio: ['clicks', 'impressions'], mult: 100 },
+      costPerClick: { label: 'Google Ads cost per click', syn: ['google ads cost per click', 'google ads cpc'], aggs: ['ratio'], kind: 'money2', ratio: ['spend', 'clicks'] },
+      cpm: { label: 'Google Ads cost per thousand impressions', syn: ['google ads cpm', 'google ads cost per thousand impressions'], aggs: ['ratio'], kind: 'money2', ratio: ['spend', 'impressions'], mult: 1000 },
+      conversions: { label: 'Google Ads conversions', syn: ['google ads conversions'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int' },
+      costPerConversion: { label: 'Google Ads cost per conversion', syn: ['google ads cost per conversion'], aggs: ['ratio'], kind: 'money2', ratio: ['spend', 'conversions'] }
+    },
+    dims: { campaign: { label: 'Google Ads campaign', syn: ['google ads campaign', 'google ads campaigns', 'campaign', 'campaigns'], filter: true } }, dimsOk: ['year', 'quarter', 'month'],
+    load(id){ return dqSelect("SELECT substr(day, 1, 4) AS y, substr(day, 6, 2) AS m, COALESCE(MAX(campaignname), '(unnamed)') AS campaign, SUM(impressions) AS impressions, SUM(spend) AS spend, SUM(clicks) AS clicks, SUM(conversions) AS conversions FROM account_gads_daily WHERE accountid = ? GROUP BY substr(day, 1, 4), substr(day, 6, 2), campaignid", id).map(r => ({ year: dqNum(r.y), month: dqNum(r.m), campaign: dqStr(r.campaign), impressions: dqNum(r.impressions), spend: dqNum(r.spend), clicks: dqNum(r.clicks), conversions: dqNum(r.conversions) })); },
+    note: 'Google Ads numbers are the daily delivery pulled from the connected account each morning, totalled by month and campaign. The current month is the days so far.'
+  },
   monthlyTx: {
     label: 'Monthly transactions roll-up', table: 'account_transactions_monthly', unit: 'month', need: 'the monthly transactions file (Train the Brain, Transactions card)',
     measures: {
