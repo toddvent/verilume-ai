@@ -26637,6 +26637,210 @@ function startGa4DailySchedule(){
 }
 
 
+// ---------------------------------------------------------------------
+// Meta Ads (ads_read) — read-only daily delivery pull. 2026-11-27.
+// A client shares their ad account with the Verilume business portfolio; a system-user token with ads_read is entered on the
+// client's Train the Brain page. We read ad-level daily delivery (impressions, reach, spend, clicks) and nothing else. We never
+// create, edit or delete anything in Meta. The token is sealed (AES-256-GCM) with META_TOKEN_KEY before it touches the database;
+// without that key set, tokens are refused rather than stored in the clear. The token is never returned by any endpoint.
+// Dates are the ad account's own reporting dates (Meta reports in the ad account time zone), stored as given.
+// Reach is a per-ad, per-day count of people; it cannot be added up across ads or days, so aggregates leave it empty.
+// Plain lowercase column names.
+// ---------------------------------------------------------------------
+const META_GRAPH_VERSION = 'v21.0';
+const META_BACKFILL_DAYS = 760;
+const META_REPULL_DAYS = 28;
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_meta_connections (
+    accountid TEXT PRIMARY KEY,
+    adaccountid TEXT NOT NULL,
+    tokenenc TEXT,
+    tokenlast4 TEXT,
+    status TEXT NOT NULL DEFAULT 'connected',
+    accountname TEXT,
+    currency TEXT,
+    timezonename TEXT,
+    connectedat TEXT,
+    connectedby TEXT,
+    lasterror TEXT,
+    backfilldoneat TEXT,
+    updatedat TEXT
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_meta_daily (
+    accountid TEXT NOT NULL,
+    day TEXT NOT NULL,
+    campaignid TEXT NOT NULL DEFAULT '',
+    campaignname TEXT,
+    adsetid TEXT NOT NULL DEFAULT '',
+    adsetname TEXT,
+    adid TEXT NOT NULL,
+    adname TEXT,
+    impressions REAL,
+    reach REAL,
+    spend REAL,
+    clicks REAL,
+    currency TEXT,
+    pulledat TEXT NOT NULL,
+    PRIMARY KEY (accountid, day, adid)
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS meta_pull_runs (
+    id TEXT PRIMARY KEY,
+    accountid TEXT NOT NULL,
+    startedat TEXT NOT NULL,
+    finishedat TEXT,
+    status TEXT NOT NULL,
+    fromday TEXT,
+    today TEXT,
+    rowsstored INTEGER DEFAULT 0,
+    message TEXT
+  );
+`);
+
+function metaKey(){
+  const k = process.env.META_TOKEN_KEY;
+  return k && String(k).length >= 16 ? crypto.createHash('sha256').update(String(k)).digest() : null;
+}
+function metaSeal(token){
+  const key = metaKey(); if (!key) return null;
+  const iv = crypto.randomBytes(12);
+  const c = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const ct = Buffer.concat([c.update(String(token), 'utf8'), c.final()]);
+  return 'v1:' + iv.toString('base64') + ':' + c.getAuthTag().toString('base64') + ':' + ct.toString('base64');
+}
+function metaOpen(sealed){
+  const key = metaKey(); if (!key || !sealed) return null;
+  const p = String(sealed).split(':'); if (p.length !== 4 || p[0] !== 'v1') return null;
+  try {
+    const d = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(p[1], 'base64'));
+    d.setAuthTag(Buffer.from(p[2], 'base64'));
+    return Buffer.concat([d.update(Buffer.from(p[3], 'base64')), d.final()]).toString('utf8');
+  } catch (e){ return null; }
+}
+function metaAdAccountId(v){ const d = String(v || '').replace(/^act_/i, '').replace(/\s+/g, ''); return /^\d{5,20}$/.test(d) ? d : null; }
+
+// One Graph API GET. The token goes in the Authorization header, never in the URL, so it cannot land in a log line.
+async function metaGraph(urlOrPath, params, token){
+  const url = /^https:\/\/graph\.facebook\.com\//.test(urlOrPath) ? urlOrPath
+    : 'https://graph.facebook.com/' + META_GRAPH_VERSION + '/' + urlOrPath + '?' + new URLSearchParams(params || {}).toString();
+  for (let attempt = 0; attempt < 3; attempt++){
+    const resp = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.ok && !data.error) return data;
+    const err = data.error || {};
+    const e = new Error(err.message || ('Meta returned HTTP ' + resp.status));
+    e.metaCode = err.code; e.metaSubcode = err.error_subcode; e.metaHttp = resp.status;
+    // 4, 17, 32, 613 are Meta's "slow down" codes — wait and try again; anything else is final.
+    if ([4, 17, 32, 613].includes(err.code) && attempt < 2){ await new Promise(r => setTimeout(r, 20000 * (attempt + 1))); continue; }
+    throw e;
+  }
+}
+
+async function metaFetchInsights(adAccountId, since, until, token){
+  const first = 'act_' + adAccountId + '/insights';
+  let page = await metaGraph(first, {
+    level: 'ad', time_increment: '1', limit: '500',
+    fields: 'campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,impressions,reach,spend,clicks,account_currency,date_start',
+    time_range: JSON.stringify({ since, until })
+  }, token);
+  const rows = [];
+  for (let n = 0; n < 400; n++){
+    (page.data || []).forEach(r => rows.push(r));
+    if (!(page.paging && page.paging.next)) break;
+    page = await metaGraph(page.paging.next, null, token);
+  }
+  return rows;
+}
+function metaStoreRows(accountId, rows){
+  const stamp = new Date().toISOString();
+  const up = db.prepare(`INSERT INTO account_meta_daily (accountid, day, campaignid, campaignname, adsetid, adsetname, adid, adname, impressions, reach, spend, clicks, currency, pulledat)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    ON CONFLICT(accountid, day, adid) DO UPDATE SET campaignid=excluded.campaignid, campaignname=excluded.campaignname, adsetid=excluded.adsetid, adsetname=excluded.adsetname, adname=excluded.adname,
+      impressions=excluded.impressions, reach=excluded.reach, spend=excluded.spend, clicks=excluded.clicks, currency=excluded.currency, pulledat=excluded.pulledat`);
+  const num = v => (v === undefined || v === null || v === '') ? null : Number(v);
+  let n = 0;
+  rows.forEach(r => {
+    if (!r.ad_id || !pdDay(r.date_start)) return;
+    up.run(accountId, r.date_start, r.campaign_id || '', r.campaign_name || null, r.adset_id || '', r.adset_name || null, r.ad_id, r.ad_name || null,
+      num(r.impressions), num(r.reach), num(r.spend), num(r.clicks), r.account_currency || null, stamp);
+    n++;
+  });
+  return n;
+}
+
+// Pull one account. First pull reads 25 months in 30-day slices; later pulls re-read the last 28 days, because Meta revises
+// recent delivery numbers. Today is never pulled (a partial day reads as a drop).
+async function metaPullAccount(accountId, forceBackfill){
+  const conn = db.prepare('SELECT * FROM account_meta_connections WHERE accountid = ?').get(accountId);
+  if (!conn) return { ok: false, reason: 'not_connected', message: 'No Meta ad account is connected.' };
+  const token = metaOpen(conn.tokenenc);
+  if (!token) return { ok: false, reason: 'no_token', message: 'The saved token cannot be read. Reconnect the ad account.' };
+  const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random();
+  const today = pdToday(); const toDay = pdAddDays(today, -1);
+  const backfill = !!forceBackfill || !conn.backfilldoneat;
+  const fromDay = pdAddDays(today, backfill ? -META_BACKFILL_DAYS : -META_REPULL_DAYS);
+  db.prepare('INSERT INTO meta_pull_runs (id, accountid, startedat, status, fromday, today) VALUES (?,?,?,?,?,?)').run(id, accountId, new Date().toISOString(), 'running', fromDay, toDay);
+  let stored = 0, failed = null;
+  try {
+    let a = fromDay;
+    while (a <= toDay){
+      const b = pdAddDays(a, 29) < toDay ? pdAddDays(a, 29) : toDay;
+      stored += metaStoreRows(accountId, await metaFetchInsights(conn.adaccountid, a, b, token));
+      a = pdAddDays(b, 1);
+    }
+    if (backfill) db.prepare('UPDATE account_meta_connections SET backfilldoneat = ? WHERE accountid = ?').run(new Date().toISOString(), accountId);
+    db.prepare("UPDATE account_meta_connections SET status = 'connected', lasterror = NULL, updatedat = ? WHERE accountid = ?").run(new Date().toISOString(), accountId);
+  } catch (e){
+    failed = e;
+    const reason = e.metaCode === 190 ? 'token_invalid' : ([10, 200, 294].includes(e.metaCode) ? 'no_access' : 'error');
+    db.prepare('UPDATE account_meta_connections SET status = ?, lasterror = ?, updatedat = ? WHERE accountid = ?').run(reason, String(e.message).slice(0, 300), new Date().toISOString(), accountId);
+  }
+  const status = failed ? (stored ? 'partial' : 'failed') : 'ok';
+  db.prepare('UPDATE meta_pull_runs SET status=?, finishedat=?, rowsstored=?, message=? WHERE id=?')
+    .run(status, new Date().toISOString(), stored, failed ? String(failed.message).slice(0, 300) : (backfill ? 'history + latest' : 'latest ' + META_REPULL_DAYS + ' days'), id);
+  return failed ? { ok: false, stored, reason: 'error', message: failed.message } : { ok: true, stored };
+}
+
+// Hourly look; each connected account is pulled once per Eastern day, after 5am Eastern.
+async function metaTick(){
+  if (!metaKey()) return;
+  const hour = Number(new Intl.DateTimeFormat('en-US', { timeZone: PD_TZ, hour: '2-digit', hour12: false }).format(new Date()));
+  if (hour < 5) return;
+  const todayEt = pdToday();
+  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: PD_TZ });
+  const conns = db.prepare("SELECT accountid FROM account_meta_connections WHERE tokenenc IS NOT NULL AND status IN ('connected','error')").all();
+  for (const c of conns){
+    const last = db.prepare("SELECT startedat FROM meta_pull_runs WHERE accountid = ? AND status IN ('ok','partial') ORDER BY startedat DESC LIMIT 1").get(c.accountid);
+    if (last && fmt.format(new Date(last.startedat)) === todayEt) continue;
+    const running = db.prepare("SELECT 1 FROM meta_pull_runs WHERE accountid = ? AND status = 'running' AND startedat > ?").get(c.accountid, new Date(Date.now() - 30 * 60 * 1000).toISOString());
+    if (running) continue;
+    try { await metaPullAccount(c.accountid, false); } catch (e){ console.error('[meta-daily]', c.accountid, e && e.message); }
+  }
+}
+let metaTimer = null;
+function startMetaDailySchedule(){
+  if (metaTimer) return;
+  const tick = () => metaTick().catch(e => console.error('[meta-daily] tick failed:', e && e.message));
+  setTimeout(tick, 4 * 60 * 1000);
+  metaTimer = setInterval(tick, 60 * 60 * 1000);
+}
+
+function metaConnectionView(accountId){
+  const c = db.prepare('SELECT * FROM account_meta_connections WHERE accountid = ?').get(accountId);
+  const lastRun = db.prepare('SELECT startedat, finishedat, status, fromday, today, rowsstored, message FROM meta_pull_runs WHERE accountid = ? ORDER BY startedat DESC LIMIT 1').get(accountId) || null;
+  const coverage = db.prepare('SELECT MIN(day) AS first, MAX(day) AS last, COUNT(DISTINCT day) AS days, COUNT(*) AS rows FROM account_meta_daily WHERE accountid = ?').get(accountId);
+  return {
+    keyConfigured: !!metaKey(), graphVersion: META_GRAPH_VERSION, historyMonths: 25, repullDays: META_REPULL_DAYS,
+    connected: !!(c && c.tokenenc), status: c ? c.status : null,
+    adAccountId: c ? c.adaccountid : null, accountName: c ? c.accountname : null, currency: c ? c.currency : null, timeZone: c ? c.timezonename : null,
+    tokenLast4: c ? c.tokenlast4 : null, connectedAt: c ? c.connectedat : null, lastError: c ? c.lasterror : null,
+    lastRun, coverage
+  };
+}
+
 // Daily integrated rows for one account, computed (not yet stored) from the raw GA4 daily table, the plan lines
 // (allocated by the flight rules above) and the client booking feed. Every figure carries a basis tag.
 function pdBuildDaily(accountId, fromDay, toDay){
@@ -40202,6 +40406,68 @@ Submit your response via the campaign_intake_turn tool.`;
         console.warn('fetchGa4Report failed for', accountId, '—', e.message);
         return sendJson(res, 200, { configured: true, connected: false, reason, message: e.message });
       }
+    }
+
+    // Meta Ads connection (read-only, ads_read): the client enters their ad account ID and a system-user token on Train the Brain.
+    // The token is checked against Meta, sealed, and never returned. Disconnect removes the token; ?deleteData=1 also removes stored rows.
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'meta-connection' && (req.method === 'GET' || req.method === 'POST' || req.method === 'DELETE')){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      if (req.method === 'POST'){
+        const body = await readBody(req).catch(() => ({})) || {};
+        if (!metaKey()) return sendJson(res, 503, { error: 'Meta connections are not switched on for this server yet. Ask Verilume support to finish setup.' });
+        const adId = metaAdAccountId(body.adAccountId);
+        if (!adId) return sendJson(res, 400, { error: 'Enter the ad account ID as numbers only (it may start with act_).' });
+        const token = String(body.token || '').trim();
+        if (token.length < 20 || /\s/.test(token)) return sendJson(res, 400, { error: 'Paste the full access token, with no spaces.' });
+        let info;
+        try { info = await metaGraph('act_' + adId, { fields: 'name,currency,timezone_name,account_status' }, token); }
+        catch (e){
+          return sendJson(res, 400, { error: e.metaCode === 190 ? 'Meta did not accept this token. Check that it is current and was created for the Verilume app.'
+            : ([10, 200, 294].includes(e.metaCode) ? 'This token cannot read that ad account. Share the ad account with the Verilume business, then try again.'
+            : 'Meta could not open that ad account: ' + String(e.message).slice(0, 160)) });
+        }
+        const now = new Date().toISOString();
+        const sealed = metaSeal(token);
+        db.prepare(`INSERT INTO account_meta_connections (accountid, adaccountid, tokenenc, tokenlast4, status, accountname, currency, timezonename, connectedat, connectedby, lasterror, backfilldoneat, updatedat)
+          VALUES (?,?,?,?,?,?,?,?,?,?,NULL,NULL,?)
+          ON CONFLICT(accountid) DO UPDATE SET adaccountid=excluded.adaccountid, tokenenc=excluded.tokenenc, tokenlast4=excluded.tokenlast4, status='connected', accountname=excluded.accountname,
+            currency=excluded.currency, timezonename=excluded.timezonename, connectedat=excluded.connectedat, connectedby=excluded.connectedby, lasterror=NULL,
+            backfilldoneat=CASE WHEN account_meta_connections.adaccountid = excluded.adaccountid THEN account_meta_connections.backfilldoneat ELSE NULL END, updatedat=excluded.updatedat`)
+          .run(accountId, adId, sealed, token.slice(-4), 'connected', info.name || null, info.currency || null, info.timezone_name || null, now, String(body.by || '').slice(0, 120), now);
+        metaPullAccount(accountId, false).catch(e => console.error('[meta-daily] start failed:', accountId, e && e.message));
+      }
+      if (req.method === 'DELETE'){
+        const u = new URL(req.url, 'http://x');
+        db.prepare('DELETE FROM account_meta_connections WHERE accountid = ?').run(accountId);
+        if (u.searchParams.get('deleteData') === '1') db.prepare('DELETE FROM account_meta_daily WHERE accountid = ?').run(accountId);
+      }
+      return sendJson(res, 200, metaConnectionView(accountId));
+    }
+    // Stored Meta delivery numbers. by=day (default) | campaign | ad. Reach is only returned at ad level — it cannot be summed.
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'meta-daily' && req.method === 'GET'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const u = new URL(req.url, 'http://x');
+      const to = pdDay(u.searchParams.get('to')) || pdAddDays(pdToday(), -1);
+      const from = pdDay(u.searchParams.get('from')) || pdAddDays(to, -29);
+      if (pdDaysBetween(from, to) > 800) return sendJson(res, 400, { error: 'range is limited to 800 days' });
+      const by = ['day', 'campaign', 'ad'].includes(u.searchParams.get('by')) ? u.searchParams.get('by') : 'day';
+      const sel = by === 'day' ? 'day, SUM(impressions) AS impressions, SUM(spend) AS spend, SUM(clicks) AS clicks, MAX(currency) AS currency GROUP BY day ORDER BY day'
+        : by === 'campaign' ? 'campaignid, MAX(campaignname) AS campaignname, SUM(impressions) AS impressions, SUM(spend) AS spend, SUM(clicks) AS clicks, MAX(currency) AS currency GROUP BY campaignid ORDER BY spend DESC'
+        : 'day, campaignname, adsetname, adid, adname, impressions, reach, spend, clicks, currency ORDER BY day, adid';
+      const sql = 'SELECT ' + sel.replace(/ (GROUP BY|ORDER BY)/, ' FROM account_meta_daily WHERE accountid = ? AND day >= ? AND day <= ? $1') + (by === 'ad' ? ' LIMIT 20000' : ' LIMIT 5000');
+      const rows = db.prepare(sql).all(accountId, from, to);
+      return sendJson(res, 200, { by, from, to, view: metaConnectionView(accountId), rows });
+    }
+    if (parts.length === 5 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'accounts' && parts[4] === 'meta-pull' && req.method === 'POST'){
+      if (!adminTokenOk(req)) return sendJson(res, 401, { error: 'unauthorized' });
+      const accountId = decodeURIComponent(parts[3]);
+      const mode = new URL(req.url, 'http://x').searchParams.get('mode');
+      const r = await metaPullAccount(accountId, mode === 'backfill');
+      return sendJson(res, 200, r);
     }
 
     // GA4 history: the client's own switch (Train the Brain > Connect a Data Source), plus status and a read of the stored detail.
@@ -55155,6 +55421,7 @@ if (require.main === module) {
   try { startModelWatch(); } catch (e){ console.error('[model-watch] could not start:', e && e.message); }
   try { startMmmSchedule(); } catch (e){ console.error('[mmm-schedule] could not start:', e && e.message); }
   try { startGa4DailySchedule(); } catch (e){ console.error('[ga4-daily] could not start:', e && e.message); }
+  try { startMetaDailySchedule(); } catch (e){ console.error('[meta-daily] could not start:', e && e.message); }
 }
 
 // 2026-08-23 fix — module load (and all ~230 top-level schema-setup
