@@ -26317,12 +26317,12 @@ const GA4_CACHE_TTL_MS = 15 * 60 * 1000;
 // cxmedia-client-portal-structure.md's "Website Traffic Analysis" (hybrid
 // tier) needs Claude to interpret, not the raw event-level data Section 9
 // explicitly recommends against storing/pulling.
-async function fetchGa4Report(propertyId){
+async function fetchGa4Report(propertyId, accountId){
   const cached = ga4ReportCache.get(propertyId);
   if (cached && Date.now() - cached.at < GA4_CACHE_TTL_MS){
     return cached.report;
   }
-  const accessToken = await getGa4AccessToken();
+  const accessToken = accountId ? await ga4TokenForAccount(accountId) : await getGa4AccessToken();
   const resp = await fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${encodeURIComponent(propertyId)}:runReport`, {
     method: 'POST',
     headers: {
@@ -26513,8 +26513,8 @@ const GA4_DETAIL_SETS = {
 };
 
 // One GA4 report for a date window. `set` = null for the base daily report, else a GA4_DETAIL_SETS entry.
-async function fetchGa4Set(propertyId, fromDay, toDay, set){
-  const accessToken = await getGa4AccessToken();
+async function fetchGa4Set(propertyId, fromDay, toDay, set, tokenIn){
+  const accessToken = tokenIn || await getGa4AccessToken();
   const dims = set ? set.dims : ['sessionDefaultChannelGroup', 'sessionSourceMedium', 'sessionCampaignName'];
   const mets = set ? set.metrics : ['sessions', 'engagedSessions', 'totalUsers', 'keyEvents'];
   const LIMIT = 100000, MAXPAGES = set ? 10 : 20; let offset = 0; const rows = []; let truncated = false, sampled = false;
@@ -26590,7 +26590,7 @@ async function pdPullGa4Account(account, forceBackfill){
       let kindRows = 0, kindTrunc = false;
       while (a <= toDay){
         const b = pdAddDays(a, 89) < toDay ? pdAddDays(a, 89) : toDay;
-        const r = await fetchGa4Set(account.analyticsGa4PropertyId, a, b, kind === 'base' ? null : GA4_DETAIL_SETS[kind]);
+        const r = await fetchGa4Set(account.analyticsGa4PropertyId, a, b, kind === 'base' ? null : GA4_DETAIL_SETS[kind], await ga4TokenForAccount(account.accountId));
         kindRows += pdStoreRows(account.accountId, kind, r.rows);
         kindTrunc = kindTrunc || r.truncated; truncated = truncated || r.truncated; sampled = sampled || r.sampled;
         a = pdAddDays(b, 1);
@@ -26611,7 +26611,6 @@ async function pdPullGa4Account(account, forceBackfill){
 
 // Hourly look; each opted-in account is pulled once per Eastern day (after 4am Eastern so GA4 has settled).
 async function pdGa4Tick(){
-  if (!ga4ServiceAccount) return;
   const hour = Number(new Intl.DateTimeFormat('en-US', { timeZone: PD_TZ, hour: '2-digit', hour12: false }).format(new Date()));
   if (hour < 4) return;
   const todayEt = pdToday();
@@ -26619,6 +26618,7 @@ async function pdGa4Tick(){
     WHERE s.enabled = 1 AND a.analyticsGa4PropertyId IS NOT NULL AND a.analyticsGa4PropertyId != '' AND a.archivedAt IS NULL`).all();
   const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: PD_TZ });
   for (const acct of accounts){
+    if (!ga4ServiceAccount && !ga4OauthConn(acct.accountId)) continue;
     const last = db.prepare("SELECT startedat FROM ga4_pull_runs WHERE accountid = ? AND status IN ('ok','partial') ORDER BY startedat DESC LIMIT 1").get(acct.accountId);
     const sets = pdHistorySettings(acct.accountId).sets;
     const pending = ['base'].concat(sets).some(k => !db.prepare('SELECT doneat FROM ga4_backfill_state WHERE accountid = ? AND kind = ? AND doneat IS NOT NULL').get(acct.accountId, k));
@@ -26708,6 +26708,8 @@ function metaSystemToken(){ const t = String(process.env.META_SYSTEM_USER_TOKEN 
 // "Connect with Meta": the client logs in to Meta, picks which ad accounts to share, and Meta hands Verilume a read-only (ads_read)
 // token for just those accounts. Nobody types an ID or a token. The token is sealed (AES-256-GCM, key META_TOKEN_KEY) and never returned.
 const META_APP_ID = String(process.env.META_APP_ID || '975169618745652').replace(/\D/g, '');
+// Facebook Login for Business configuration (ads_read, user access token). Not a secret; env overrides.
+const META_LOGIN_CONFIG_ID = String(process.env.META_LOGIN_CONFIG_ID || '920867021017086').replace(/\D/g, '');
 function metaAppSecret(){ const t = String(process.env.META_APP_SECRET || '').trim(); return t.length >= 16 ? t : null; }
 function metaKeyBytes(){ const k = String(process.env.META_TOKEN_KEY || ''); return k.length >= 16 ? crypto.createHash('sha256').update(k).digest() : null; }
 function metaOauthReady(){ return !!(metaAppSecret() && metaKeyBytes()); }
@@ -26937,6 +26939,208 @@ function metaConnectionView(accountId){
     connectedAt: c ? c.connectedat : null, lastError: c ? c.lasterror : null,
     lastRun, coverage
   };
+}
+
+
+// ---------------------------------------------------------------------
+// Connect with Google (self-service): Google Analytics 4 and Google Ads. The client signs in with Google and picks one GA4 property or
+// one Google Ads account; Verilume keeps a sealed read-only refresh token (analytics.readonly / adwords) and never shows or asks for it.
+// Google Ads is read with the search endpoint (campaign level, so Performance Max is included); nothing is ever created or changed.
+// ---------------------------------------------------------------------
+const GOOGLE_ADS_API_VERSION = process.env.GOOGLE_ADS_API_VERSION || 'v21';
+const GOOGLE_PRODUCTS = {
+  ga4: { scope: 'https://www.googleapis.com/auth/analytics.readonly', label: 'Google Analytics 4' },
+  ads: { scope: 'https://www.googleapis.com/auth/adwords', label: 'Google Ads' }
+};
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_google_connections (
+    accountid TEXT NOT NULL,
+    product TEXT NOT NULL,
+    resourceid TEXT,
+    resourcename TEXT,
+    loginid TEXT,
+    currency TEXT,
+    timezonename TEXT,
+    email TEXT,
+    tokenenc TEXT,
+    status TEXT NOT NULL DEFAULT 'choose',
+    lasterror TEXT,
+    connectedat TEXT,
+    connectedby TEXT,
+    backfilldoneat TEXT,
+    updatedat TEXT,
+    PRIMARY KEY (accountid, product)
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_gads_daily (
+    accountid TEXT NOT NULL,
+    day TEXT NOT NULL,
+    campaignid TEXT NOT NULL,
+    campaignname TEXT,
+    impressions REAL,
+    clicks REAL,
+    spend REAL,
+    conversions REAL,
+    conversionvalue REAL,
+    currency TEXT,
+    pulledat TEXT NOT NULL,
+    PRIMARY KEY (accountid, day, campaignid)
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS gads_pull_runs (
+    id TEXT PRIMARY KEY,
+    accountid TEXT NOT NULL,
+    startedat TEXT NOT NULL,
+    finishedat TEXT,
+    status TEXT NOT NULL,
+    fromday TEXT,
+    today TEXT,
+    rowsstored INTEGER DEFAULT 0,
+    message TEXT
+  );
+`);
+function googleClientId(){ return String(process.env.GOOGLE_OAUTH_CLIENT_ID || '').trim() || null; }
+function googleClientSecret(){ const t = String(process.env.GOOGLE_OAUTH_CLIENT_SECRET || '').trim(); return t.length >= 10 ? t : null; }
+function googleOauthReady(){ return !!(googleClientId() && googleClientSecret() && metaKeyBytes()); }
+function googleDevToken(){ return String(process.env.GOOGLE_ADS_DEVELOPER_TOKEN || '').trim() || null; }
+function googleProductReady(product){ return googleOauthReady(); } // a developer token is sent when GOOGLE_ADS_DEVELOPER_TOKEN is set; Google is moving API access to per-Cloud-project levels
+function googleRedirectUri(){ return (process.env.PUBLIC_BASE_URL || 'https://verilume.ai').replace(/\/+$/, '') + '/api/google/oauth/callback'; }
+function googleStateSign(accountId, product){ return metaStateSign(accountId + '|' + product); }
+function googleStateVerify(state){ const v = metaStateVerify(state); if (!v) return null; const i = v.lastIndexOf('|'); const product = v.slice(i + 1); return i > 0 && GOOGLE_PRODUCTS[product] ? { accountId: v.slice(0, i), product } : null; }
+function googleConn(accountId, product){ return db.prepare('SELECT * FROM account_google_connections WHERE accountid = ? AND product = ?').get(accountId, product) || null; }
+const googleTokenCache = new Map();
+async function googleAccessToken(conn){
+  const key = conn.accountid + '|' + conn.product; const hit = googleTokenCache.get(key);
+  if (hit && hit.exp - 60000 > Date.now()) return hit.token;
+  const refresh = metaOpen(conn.tokenenc);
+  if (!refresh){ const e = new Error('Google login is missing'); e.googleInvalid = true; throw e; }
+  const resp = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refresh, client_id: googleClientId(), client_secret: googleClientSecret() }).toString() });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || !data.access_token){ const e = new Error(data.error_description || data.error || ('Google responded ' + resp.status)); e.googleInvalid = data.error === 'invalid_grant'; throw e; }
+  googleTokenCache.set(key, { token: data.access_token, exp: Date.now() + (data.expires_in || 3600) * 1000 });
+  return data.access_token;
+}
+async function googleCall(method, url, token, body, extraHeaders){
+  const headers = Object.assign({ 'Authorization': 'Bearer ' + token }, extraHeaders || {});
+  if (body) headers['Content-Type'] = 'application/json';
+  const resp = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok){ const e = new Error((data.error && data.error.message) || ('Google responded ' + resp.status)); e.googleHttp = resp.status; e.googleStatus = data.error && data.error.status; throw e; }
+  return data;
+}
+async function googleListGa4Properties(token){
+  const out = []; let pageToken = '';
+  for (let i = 0; i < 10; i++){
+    const d = await googleCall('GET', 'https://analyticsadmin.googleapis.com/v1beta/accountSummaries?pageSize=200' + (pageToken ? '&pageToken=' + encodeURIComponent(pageToken) : ''), token);
+    (d.accountSummaries || []).forEach(a => (a.propertySummaries || []).forEach(pr => out.push({ id: String(pr.property || '').replace(/^properties\//, ''), name: (pr.displayName || 'Property') + (a.displayName ? ' · ' + a.displayName : ''), accountId: String(a.account || '').replace(/^accounts\//, '') })));
+    if (d.nextPageToken) pageToken = d.nextPageToken; else break;
+  }
+  return out.filter(x => /^\d+$/.test(x.id));
+}
+function googleAdsHeaders(loginId){ const h = {}; if (googleDevToken()) h['developer-token'] = googleDevToken(); if (loginId) h['login-customer-id'] = String(loginId); return h; }
+async function googleAdsSearch(customerId, token, query, loginId){
+  const rows = []; let pageToken = '';
+  for (let i = 0; i < 200; i++){
+    const d = await googleCall('POST', 'https://googleads.googleapis.com/' + GOOGLE_ADS_API_VERSION + '/customers/' + customerId + '/googleAds:search', token, Object.assign({ query, pageSize: 10000 }, pageToken ? { pageToken } : {}), googleAdsHeaders(loginId));
+    (d.results || []).forEach(r => rows.push(r));
+    if (d.nextPageToken) pageToken = d.nextPageToken; else break;
+  }
+  return rows;
+}
+async function googleListAdsCustomers(token){
+  const acc = await googleCall('GET', 'https://googleads.googleapis.com/' + GOOGLE_ADS_API_VERSION + '/customers:listAccessibleCustomers', token, null, googleAdsHeaders(null));
+  const ids = (acc.resourceNames || []).map(r => String(r).replace(/^customers\//, '')).filter(x => /^\d+$/.test(x)).slice(0, 40);
+  const out = new Map();
+  for (const id of ids){
+    try {
+      const rows = await googleAdsSearch(id, token, "SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.time_zone, customer.manager, customer.status FROM customer", null);
+      const c = rows[0] && rows[0].customer; if (!c) continue;
+      if (c.manager){
+        const kids = await googleAdsSearch(id, token, "SELECT customer_client.id, customer_client.descriptive_name, customer_client.currency_code, customer_client.time_zone, customer_client.manager, customer_client.status FROM customer_client WHERE customer_client.level <= 2", id).catch(() => []);
+        kids.forEach(k => { const cc = k.customerClient || {}; if (!cc.manager && cc.status === 'ENABLED' && cc.id && !out.has(String(cc.id))) out.set(String(cc.id), { id: String(cc.id), name: cc.descriptiveName || ('Account ' + cc.id), currency: cc.currencyCode || null, timeZone: cc.timeZone || null, loginId: id }); });
+      } else if (c.status === 'ENABLED' && !out.has(String(c.id))) out.set(String(c.id), { id: String(c.id), name: c.descriptiveName || ('Account ' + c.id), currency: c.currencyCode || null, timeZone: c.timeZone || null, loginId: null });
+    } catch (e){ /* an account this login cannot read is simply not offered */ }
+  }
+  return Array.from(out.values());
+}
+async function googleResources(conn){
+  const token = await googleAccessToken(conn);
+  return conn.product === 'ga4' ? googleListGa4Properties(token) : googleListAdsCustomers(token);
+}
+// The GA4 pulls read with the client's own Google login when they used Connect with Google; otherwise the Verilume service account.
+function ga4OauthConn(accountId){ const c = googleConn(accountId, 'ga4'); return c && c.tokenenc && c.status === 'connected' ? c : null; }
+async function ga4TokenForAccount(accountId){ const c = ga4OauthConn(accountId); return c ? googleAccessToken(c) : getGa4AccessToken(); }
+
+const GADS_BACKFILL_DAYS = 760, GADS_REPULL_DAYS = 28;
+async function googleAdsPull(accountId, forceBackfill){
+  const conn = googleConn(accountId, 'ads');
+  if (!conn || !conn.resourceid) return { ok: false, reason: 'not_connected', message: 'No Google Ads account is connected.' };
+  if (!googleProductReady('ads')) return { ok: false, reason: 'not_configured', message: 'Google Ads connections are not set up on this server yet.' };
+  const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random();
+  const today = pdToday(); const toDay = pdAddDays(today, -1);
+  const backfill = !!forceBackfill || !conn.backfilldoneat;
+  const fromDay = pdAddDays(today, backfill ? -GADS_BACKFILL_DAYS : -GADS_REPULL_DAYS);
+  db.prepare('INSERT INTO gads_pull_runs (id, accountid, startedat, status, fromday, today) VALUES (?,?,?,?,?,?)').run(id, accountId, new Date().toISOString(), 'running', fromDay, toDay);
+  let stored = 0, failed = null;
+  try {
+    const token = await googleAccessToken(conn);
+    let a = fromDay;
+    while (a <= toDay){
+      const b = pdAddDays(a, 89) < toDay ? pdAddDays(a, 89) : toDay;
+      const rows = await googleAdsSearch(conn.resourceid, token,
+        "SELECT segments.date, campaign.id, campaign.name, customer.currency_code, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.conversions_value FROM campaign WHERE segments.date BETWEEN '" + a + "' AND '" + b + "' AND campaign.status != 'REMOVED'", conn.loginid);
+      const ins = db.prepare(`INSERT INTO account_gads_daily (accountid, day, campaignid, campaignname, impressions, clicks, spend, conversions, conversionvalue, currency, pulledat) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(accountid, day, campaignid) DO UPDATE SET campaignname=excluded.campaignname, impressions=excluded.impressions, clicks=excluded.clicks, spend=excluded.spend, conversions=excluded.conversions, conversionvalue=excluded.conversionvalue, currency=excluded.currency, pulledat=excluded.pulledat`);
+      const now = new Date().toISOString();
+      rows.forEach(r => { const m = r.metrics || {}; const day = r.segments && r.segments.date; if (!day || !r.campaign) return;
+        ins.run(accountId, day, String(r.campaign.id), r.campaign.name || null, Number(m.impressions || 0), Number(m.clicks || 0), Number(m.costMicros || 0) / 1e6, Number(m.conversions || 0), Number(m.conversionsValue || 0), (r.customer && r.customer.currencyCode) || conn.currency || null, now); stored++; });
+      a = pdAddDays(b, 1);
+    }
+    if (backfill) db.prepare('UPDATE account_google_connections SET backfilldoneat = ? WHERE accountid = ? AND product = ?').run(new Date().toISOString(), accountId, 'ads');
+    db.prepare("UPDATE account_google_connections SET status = 'connected', lasterror = NULL, updatedat = ? WHERE accountid = ? AND product = 'ads'").run(new Date().toISOString(), accountId);
+  } catch (e){
+    failed = e;
+    const reason = e.googleInvalid ? 'token_invalid' : ((e.googleHttp === 403 || e.googleStatus === 'PERMISSION_DENIED') ? 'no_access' : 'error');
+    db.prepare('UPDATE account_google_connections SET status = ?, lasterror = ?, updatedat = ? WHERE accountid = ? AND product = ?').run(reason, String(e.message).slice(0, 300), new Date().toISOString(), accountId, 'ads');
+  }
+  const status = failed ? (stored ? 'partial' : 'failed') : 'ok';
+  db.prepare('UPDATE gads_pull_runs SET status=?, finishedat=?, rowsstored=?, message=? WHERE id=?').run(status, new Date().toISOString(), stored, failed ? String(failed.message).slice(0, 300) : (backfill ? 'history + latest' : 'latest ' + GADS_REPULL_DAYS + ' days'), id);
+  return failed ? { ok: false, stored, reason: 'error', message: failed.message } : { ok: true, stored };
+}
+async function googleAdsTick(){
+  if (!googleProductReady('ads')) return;
+  const hour = Number(new Intl.DateTimeFormat('en-US', { timeZone: PD_TZ, hour: '2-digit', hour12: false }).format(new Date()));
+  if (hour < 5) return;
+  const todayEt = pdToday(); const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: PD_TZ });
+  const conns = db.prepare("SELECT accountid FROM account_google_connections WHERE product = 'ads' AND resourceid IS NOT NULL AND resourceid != '' AND status IN ('connected','error')").all();
+  for (const c of conns){
+    const last = db.prepare("SELECT startedat FROM gads_pull_runs WHERE accountid = ? AND status IN ('ok','partial') ORDER BY startedat DESC LIMIT 1").get(c.accountid);
+    if (last && fmt.format(new Date(last.startedat)) === todayEt) continue;
+    const running = db.prepare("SELECT 1 FROM gads_pull_runs WHERE accountid = ? AND status = 'running' AND startedat > ?").get(c.accountid, new Date(Date.now() - 30 * 60 * 1000).toISOString());
+    if (running) continue;
+    try { await googleAdsPull(c.accountid, false); } catch (e){ console.error('[gads-daily]', c.accountid, e && e.message); }
+  }
+}
+let gadsTimer = null;
+function startGoogleAdsDailySchedule(){
+  if (gadsTimer) return;
+  const tick = () => googleAdsTick().catch(e => console.error('[gads-daily] tick failed:', e && e.message));
+  setTimeout(tick, 5 * 60 * 1000);
+  gadsTimer = setInterval(tick, 60 * 60 * 1000);
+}
+function googleConnectionView(accountId, product){
+  const c = googleConn(accountId, product);
+  const view = { product, configured: googleProductReady(product), connected: !!(c && c.resourceid), choosing: !!(c && c.status === 'choose'), status: c ? c.status : null,
+    resourceId: c ? c.resourceid : null, resourceName: c ? c.resourcename : null, email: c ? c.email : null, currency: c ? c.currency : null, timeZone: c ? c.timezonename : null,
+    connectedAt: c ? c.connectedat : null, lastError: c ? c.lasterror : null };
+  if (product === 'ads'){
+    view.lastRun = db.prepare('SELECT startedat, finishedat, status, fromday, today, rowsstored, message FROM gads_pull_runs WHERE accountid = ? ORDER BY startedat DESC LIMIT 1').get(accountId) || null;
+    view.coverage = db.prepare('SELECT MIN(day) AS first, MAX(day) AS last, COUNT(DISTINCT day) AS days, COUNT(*) AS rows FROM account_gads_daily WHERE accountid = ?').get(accountId);
+  }
+  return view;
 }
 
 // Daily integrated rows for one account, computed (not yet stored) from the raw GA4 daily table, the plan lines
@@ -40485,14 +40689,14 @@ Submit your response via the campaign_intake_turn tool.`;
       if (!requireAccount(req, res, accountId)) return;
       const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
       if (!account) return sendJson(res, 404, { error: 'account not found' });
-      if (!ga4ServiceAccount){
+      if (!ga4ServiceAccount && !ga4OauthConn(accountId)){
         return sendJson(res, 200, { configured: false, connected: false });
       }
       if (!account.analyticsGa4PropertyId){
         return sendJson(res, 200, { configured: true, connected: false, reason: 'no_property_on_file' });
       }
       try {
-        const report = await fetchGa4Report(account.analyticsGa4PropertyId);
+        const report = await fetchGa4Report(account.analyticsGa4PropertyId, accountId);
         if (account.analyticsStatus !== 'connected'){
           db.prepare('UPDATE accounts SET analyticsStatus = ? WHERE accountId = ?').run('connected', accountId);
         }
@@ -40506,6 +40710,108 @@ Submit your response via the campaign_intake_turn tool.`;
       }
     }
 
+    // Connect with Google (self-service), for product=ga4 (Google Analytics 4) or product=ads (Google Ads). Same shape as Connect with Meta:
+    // start returns Google's sign-in URL; the callback seals a read-only refresh token; the client then picks one property / ad account.
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && ['google-oauth-start', 'google-connection', 'google-resources', 'google-ads-daily'].includes(parts[3])){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const u = new URL(req.url, 'http://x');
+      const product = (req.method === 'POST' ? null : u.searchParams.get('product'));
+      if (parts[3] === 'google-ads-daily' && req.method === 'GET'){
+        const to = pdDay(u.searchParams.get('to')) || pdAddDays(pdToday(), -1);
+        const from = pdDay(u.searchParams.get('from')) || pdAddDays(to, -29);
+        if (pdDaysBetween(from, to) > 800) return sendJson(res, 400, { error: 'range is limited to 800 days' });
+        const by = u.searchParams.get('by') === 'campaign' ? 'campaign' : 'day';
+        const sql = by === 'day'
+          ? 'SELECT day, SUM(impressions) AS impressions, SUM(clicks) AS clicks, SUM(spend) AS spend, SUM(conversions) AS conversions, SUM(conversionvalue) AS conversionvalue, MAX(currency) AS currency FROM account_gads_daily WHERE accountid = ? AND day >= ? AND day <= ? GROUP BY day ORDER BY day LIMIT 5000'
+          : 'SELECT campaignid, MAX(campaignname) AS campaignname, SUM(impressions) AS impressions, SUM(clicks) AS clicks, SUM(spend) AS spend, SUM(conversions) AS conversions, SUM(conversionvalue) AS conversionvalue, MAX(currency) AS currency FROM account_gads_daily WHERE accountid = ? AND day >= ? AND day <= ? GROUP BY campaignid ORDER BY spend DESC LIMIT 5000';
+        return sendJson(res, 200, { by, from, to, view: googleConnectionView(accountId, 'ads'), rows: db.prepare(sql).all(accountId, from, to) });
+      }
+      if (parts[3] === 'google-connection' && req.method === 'POST'){
+        const body = await readBody(req).catch(() => ({})) || {};
+        const prod = String(body.product || '');
+        if (!GOOGLE_PRODUCTS[prod]) return sendJson(res, 400, { error: 'Unknown Google product.' });
+        const conn = googleConn(accountId, prod);
+        if (!conn || !conn.tokenenc) return sendJson(res, 400, { error: 'Sign in with Google first.' });
+        let list;
+        try { list = await googleResources(conn); } catch (e){ return sendJson(res, 400, { error: e.googleInvalid ? 'Your Google login has expired. Press Connect with Google again.' : ('Google did not return your accounts: ' + String(e.message).slice(0, 140)) }); }
+        const pick = list.find(x => String(x.id) === String(body.resourceId));
+        if (!pick) return sendJson(res, 400, { error: 'That account is not available to your Google login.' });
+        const now = new Date().toISOString();
+        db.prepare(`UPDATE account_google_connections SET resourceid = ?, resourcename = ?, loginid = ?, currency = ?, timezonename = ?, status = 'connected', lasterror = NULL, connectedat = ?, connectedby = ?,
+          backfilldoneat = CASE WHEN resourceid = ? THEN backfilldoneat ELSE NULL END, updatedat = ? WHERE accountid = ? AND product = ?`)
+          .run(pick.id, pick.name || null, pick.loginId || null, pick.currency || null, pick.timeZone || null, now, String(body.by || '').slice(0, 120), pick.id, now, accountId, prod);
+        if (prod === 'ga4') db.prepare("UPDATE accounts SET analyticsGa4PropertyId = ?, analyticsGa4AccountId = ?, analyticsPathway = 'ga4', analyticsStatus = 'connected' WHERE accountId = ?").run(pick.id, pick.accountId || null, accountId);
+        else googleAdsPull(accountId, false).catch(e => console.error('[gads-daily] start failed:', accountId, e && e.message));
+        return sendJson(res, 200, googleConnectionView(accountId, prod));
+      }
+      if (!GOOGLE_PRODUCTS[product]) return sendJson(res, 400, { error: 'Unknown Google product.' });
+      if (parts[3] === 'google-oauth-start' && req.method === 'GET'){
+        if (!googleProductReady(product)) return sendJson(res, 503, { error: 'Google connections are being set up for your account. Verilume will let you know when you can connect.' });
+        const url = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({ client_id: googleClientId(), redirect_uri: googleRedirectUri(), response_type: 'code', scope: GOOGLE_PRODUCTS[product].scope + ' email',
+          access_type: 'offline', prompt: 'consent', include_granted_scopes: 'false', state: googleStateSign(accountId, product) }).toString();
+        return sendJson(res, 200, { url });
+      }
+      if (parts[3] === 'google-resources' && req.method === 'GET'){
+        const conn = googleConn(accountId, product);
+        if (!conn || !conn.tokenenc) return sendJson(res, 200, { accounts: [] });
+        try { return sendJson(res, 200, { accounts: await googleResources(conn) }); }
+        catch (e){ return sendJson(res, 200, { accounts: [], needsReconnect: !!e.googleInvalid, error: 'Google did not return your accounts. Try Connect with Google again.' }); }
+      }
+      if (parts[3] === 'google-connection' && req.method === 'GET') return sendJson(res, 200, googleConnectionView(accountId, product));
+      if (parts[3] === 'google-connection' && req.method === 'DELETE'){
+        const conn = googleConn(accountId, product);
+        if (conn && conn.tokenenc){ const t = metaOpen(conn.tokenenc); if (t) fetch('https://oauth2.googleapis.com/revoke', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ token: t }).toString() }).catch(() => {}); }
+        db.prepare('DELETE FROM account_google_connections WHERE accountid = ? AND product = ?').run(accountId, product);
+        googleTokenCache.delete(accountId + '|' + product);
+        if (product === 'ga4') db.prepare("UPDATE accounts SET analyticsStatus = 'not_started' WHERE accountId = ? AND analyticsPathway = 'ga4'").run(accountId);
+        if (product === 'ads' && u.searchParams.get('deleteData') === '1') db.prepare('DELETE FROM account_gads_daily WHERE accountid = ?').run(accountId);
+        return sendJson(res, 200, googleConnectionView(accountId, product));
+      }
+    }
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'google' && parts[2] === 'oauth' && parts[3] === 'callback' && req.method === 'GET'){
+      const q = new URL(req.url, 'http://x').searchParams;
+      const st = googleStateVerify(q.get('state'));
+      const back = (r) => { res.writeHead(302, { Location: (process.env.PUBLIC_BASE_URL || 'https://verilume.ai').replace(/\/+$/, '') + '/portal.html?accountId=' + encodeURIComponent(st.accountId) + '&google=' + st.product + '&result=' + r }); res.end(); };
+      if (!st){ res.writeHead(400, { 'Content-Type': 'text/plain' }); return res.end('This Google connection link expired. Go back to Verilume and press Connect with Google again.'); }
+      if (q.get('error') || !q.get('code')) return back('denied');
+      try {
+        const resp = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ code: q.get('code'), client_id: googleClientId(), client_secret: googleClientSecret(), redirect_uri: googleRedirectUri(), grant_type: 'authorization_code' }).toString() });
+        const tk = await resp.json().catch(() => ({}));
+        if (!resp.ok || !tk.access_token) throw new Error(tk.error_description || tk.error || ('Google responded ' + resp.status));
+        const prev = googleConn(st.accountId, st.product);
+        const refresh = tk.refresh_token || (prev && prev.tokenenc ? metaOpen(prev.tokenenc) : null);
+        if (!refresh) return back('error');
+        let email = null; try { email = (await googleCall('GET', 'https://openidconnect.googleapis.com/v1/userinfo', tk.access_token)).email || null; } catch (e){}
+        const now = new Date().toISOString();
+        db.prepare(`INSERT INTO account_google_connections (accountid, product, tokenenc, email, status, connectedat, connectedby, updatedat) VALUES (?,?,?,?,'choose',?,?,?)
+          ON CONFLICT(accountid, product) DO UPDATE SET tokenenc=excluded.tokenenc, email=excluded.email, status=CASE WHEN account_google_connections.resourceid IS NOT NULL AND account_google_connections.resourceid != '' THEN 'connected' ELSE 'choose' END, lasterror=NULL, updatedat=excluded.updatedat`)
+          .run(st.accountId, st.product, metaSeal(refresh), email, now, 'google-login', now);
+        googleTokenCache.set(st.accountId + '|' + st.product, { token: tk.access_token, exp: Date.now() + (tk.expires_in || 3600) * 1000 });
+        const conn = googleConn(st.accountId, st.product);
+        const list = await googleResources(conn);
+        if (!list.length){ db.prepare("UPDATE account_google_connections SET lasterror = ? WHERE accountid = ? AND product = ?").run('Google returned no accounts for this login.', st.accountId, st.product); return back('none'); }
+        if (list.length === 1 && !(conn.resourceid)){
+          const one = list[0];
+          db.prepare(`UPDATE account_google_connections SET resourceid = ?, resourcename = ?, loginid = ?, currency = ?, timezonename = ?, status = 'connected', backfilldoneat = NULL, updatedat = ? WHERE accountid = ? AND product = ?`)
+            .run(one.id, one.name || null, one.loginId || null, one.currency || null, one.timeZone || null, now, st.accountId, st.product);
+          if (st.product === 'ga4') db.prepare("UPDATE accounts SET analyticsGa4PropertyId = ?, analyticsGa4AccountId = ?, analyticsPathway = 'ga4', analyticsStatus = 'connected' WHERE accountId = ?").run(one.id, one.accountId || null, st.accountId);
+          else googleAdsPull(st.accountId, false).catch(e => console.error('[gads-daily] start failed:', st.accountId, e && e.message));
+          return back('connected');
+        }
+        return back(conn.resourceid ? 'connected' : 'choose');
+      } catch (e){
+        console.error('[google-oauth] callback failed:', e && e.message);
+        return back('error');
+      }
+    }
+    if (parts.length === 5 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'accounts' && parts[4] === 'google-ads-pull' && req.method === 'POST'){
+      if (!adminTokenOk(req)) return sendJson(res, 401, { error: 'unauthorized' });
+      const mode = new URL(req.url, 'http://x').searchParams.get('mode');
+      return sendJson(res, 200, await googleAdsPull(decodeURIComponent(parts[3]), mode === 'backfill'));
+    }
+
     // Connect with Meta (self-service). 1) start returns Meta's login URL; 2) Meta sends the browser back to the callback with a code;
     // 3) Verilume swaps it for a long-lived read-only token, seals it, and either connects the one ad account or lets the client pick.
     if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'meta-oauth-start' && req.method === 'GET'){
@@ -40514,7 +40820,7 @@ Submit your response via the campaign_intake_turn tool.`;
       if (!metaOauthReady()) return sendJson(res, 503, { error: 'Meta connections are being set up for your account. Verilume will let you know when you can connect.' });
       const existing = db.prepare('SELECT status FROM account_meta_connections WHERE accountid = ?').get(accountId);
       if (existing && existing.status === 'demo') return sendJson(res, 400, { error: 'This demo account uses sample Meta data.' });
-      const url = 'https://www.facebook.com/' + META_GRAPH_VERSION + '/dialog/oauth?' + new URLSearchParams({ client_id: META_APP_ID, redirect_uri: metaRedirectUri(), state: metaStateSign(accountId), scope: 'ads_read', response_type: 'code' }).toString();
+      const url = 'https://www.facebook.com/' + META_GRAPH_VERSION + '/dialog/oauth?' + new URLSearchParams({ client_id: META_APP_ID, redirect_uri: metaRedirectUri(), state: metaStateSign(accountId), response_type: 'code', ...(META_LOGIN_CONFIG_ID ? { config_id: META_LOGIN_CONFIG_ID, override_default_response_type: 'true' } : { scope: 'ads_read' }) }).toString();
       return sendJson(res, 200, { url });
     }
     if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'meta' && parts[2] === 'oauth' && parts[3] === 'callback' && req.method === 'GET'){
@@ -40636,14 +40942,14 @@ Submit your response via the campaign_intake_turn tool.`;
         const body = await readBody(req).catch(() => ({})) || {};
         const wantOn = !!body.enabled;
         const sets = (Array.isArray(body.sets) ? body.sets : []).filter(k => GA4_DETAIL_SETS[k]);
-        if (wantOn && !account.analyticsGa4PropertyId) return sendJson(res, 400, { error: 'Add your GA4 property ID first, then switch this on.' });
+        if (wantOn && !account.analyticsGa4PropertyId) return sendJson(res, 400, { error: 'Connect Google Analytics first, then switch this on.' });
         const prev = pdHistorySettings(accountId);
         const now = new Date().toISOString();
         db.prepare(`INSERT INTO account_ga4_history_settings (accountid, enabled, sets, activatedat, activatedby, updatedat) VALUES (?,?,?,?,?,?)
           ON CONFLICT(accountid) DO UPDATE SET enabled=excluded.enabled, sets=excluded.sets, activatedat=COALESCE(account_ga4_history_settings.activatedat, excluded.activatedat), activatedby=COALESCE(account_ga4_history_settings.activatedby, excluded.activatedby), updatedat=excluded.updatedat`)
           .run(accountId, wantOn ? 1 : 0, JSON.stringify(sets), wantOn ? now : null, wantOn ? String(body.by || '').slice(0, 120) : null, now);
         // Turning it on (or adding a set) starts the pull now rather than waiting for the next hourly look; the page shows progress.
-        if (wantOn && ga4ServiceAccount && (!prev.enabled || sets.some(k => !prev.sets.includes(k)))){
+        if (wantOn && (ga4ServiceAccount || ga4OauthConn(accountId)) && (!prev.enabled || sets.some(k => !prev.sets.includes(k)))){
           pdPullGa4Account(account, false).catch(e => console.error('[ga4-daily] start failed:', accountId, e && e.message));
         }
       }
@@ -40652,7 +40958,7 @@ Submit your response via the campaign_intake_turn tool.`;
       const base = db.prepare('SELECT MIN(day) AS first, MAX(day) AS last, COUNT(DISTINCT day) AS days FROM account_ga4_daily WHERE accountid = ?').get(accountId);
       const detail = db.prepare('SELECT kind, MIN(day) AS first, MAX(day) AS last, COUNT(*) AS n FROM account_ga4_detail WHERE accountid = ? GROUP BY kind').all(accountId);
       return sendJson(res, 200, {
-        configured: !!ga4ServiceAccount, serviceAccountEmail: ga4ServiceAccount ? ga4ServiceAccount.client_email : null,
+        configured: !!ga4ServiceAccount || googleOauthReady(), viaGoogle: !!ga4OauthConn(accountId), serviceAccountEmail: (ga4ServiceAccount && !ga4OauthConn(accountId)) ? ga4ServiceAccount.client_email : null,
         propertyOnFile: !!account.analyticsGa4PropertyId, timeZone: PD_TZ, historyMonths: 25,
         enabled: st.enabled, sets: st.sets, activatedAt: st.activatedAt,
         available: Object.keys(GA4_DETAIL_SETS).map(k => ({ key: k, label: GA4_DETAIL_SETS[k].label, help: GA4_DETAIL_SETS[k].help })),
@@ -55578,6 +55884,7 @@ if (require.main === module) {
   try { startMmmSchedule(); } catch (e){ console.error('[mmm-schedule] could not start:', e && e.message); }
   try { startGa4DailySchedule(); } catch (e){ console.error('[ga4-daily] could not start:', e && e.message); }
   try { startMetaDailySchedule(); } catch (e){ console.error('[meta-daily] could not start:', e && e.message); }
+  try { startGoogleAdsDailySchedule(); } catch (e){ console.error('[gads-daily] could not start:', e && e.message); }
 }
 
 // 2026-08-23 fix — module load (and all ~230 top-level schema-setup
