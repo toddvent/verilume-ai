@@ -15893,6 +15893,40 @@ function requireAccountOrAdminAudited(req, res, accountId, resource, requestPath
 // the same audit trail a human read gets via GET .../kpi-metrics below,
 // so there's a real record of the AI Brain itself having read this
 // account's data.
+// Connected ad platforms (Meta, Google Ads): the daily numbers the client's own sign-in brings in. Read by the AI Brain,
+// the voice assistant and Ask so answers and recommendations rest on real delivery, not only on plans and uploads.
+function buildConnectedMediaContextForPrompt(accountId){
+  const out = { promptBlock: '', hasData: false };
+  try {
+    const day = n => { const d = new Date(Date.now() - n * 86400000); return d.toISOString().slice(0, 10); };
+    const to = day(1), f7 = day(7), f30 = day(30), f90 = day(90);
+    const lines = [];
+    const sources = [
+      { name: 'META ADS (Facebook and Instagram)', table: 'account_meta_daily', cols: 'SUM(impressions) AS imp, SUM(spend) AS sp, SUM(clicks) AS clk, 0 AS cv', camp: 'campaignname', hasConv: false },
+      { name: 'GOOGLE ADS (Search, Display, YouTube, Performance Max)', table: 'account_gads_daily', cols: 'SUM(impressions) AS imp, SUM(spend) AS sp, SUM(clicks) AS clk, SUM(conversions) AS cv', camp: 'campaignname', hasConv: true }
+    ];
+    sources.forEach(src => {
+      let cov; try { cov = db.prepare(`SELECT MIN(day) AS first, MAX(day) AS last, COUNT(DISTINCT day) AS days FROM ${src.table} WHERE accountid = ?`).get(accountId); } catch (e) { return; }
+      if (!cov || !cov.days) return;
+      out.hasData = true;
+      const win = (from) => db.prepare(`SELECT ${src.cols} FROM ${src.table} WHERE accountid = ? AND day >= ? AND day <= ?`).get(accountId, from, to) || {};
+      const fmt = r => { const imp = Number(r.imp) || 0, sp = Number(r.sp) || 0, clk = Number(r.clk) || 0, cv = Number(r.cv) || 0;
+        return `spend $${Math.round(sp).toLocaleString()}, ${imp.toLocaleString()} impressions, ${clk.toLocaleString()} clicks` + (imp ? `, CTR ${(clk / imp * 100).toFixed(2)}%` : '') + (clk && sp ? `, CPC $${(sp / clk).toFixed(2)}` : '') + (src.hasConv ? `, ${Math.round(cv).toLocaleString()} conversions` + (cv && sp ? `, cost per conversion $${(sp / cv).toFixed(2)}` : '') : ''); };
+      lines.push(`${src.name}: connected by the client, daily data from ${cov.first} to ${cov.last} (${cov.days} days). Spend is in the ad account's currency.`);
+      lines.push(`- Last 7 days: ${fmt(win(f7))}`);
+      lines.push(`- Last 30 days: ${fmt(win(f30))}`);
+      lines.push(`- Last 90 days: ${fmt(win(f90))}`);
+      const months = db.prepare(`SELECT substr(day, 1, 7) AS ym, ${src.cols} FROM ${src.table} WHERE accountid = ? GROUP BY substr(day, 1, 7) ORDER BY ym DESC LIMIT 4`).all(accountId).reverse();
+      if (months.length) lines.push('- By month: ' + months.map(m => `${m.ym} $${Math.round(Number(m.sp) || 0).toLocaleString()} / ${(Number(m.imp) || 0).toLocaleString()} imp / ${(Number(m.clk) || 0).toLocaleString()} clicks`).join('; '));
+      const top = db.prepare(`SELECT ${src.camp} AS name, SUM(spend) AS sp, SUM(impressions) AS imp, SUM(clicks) AS clk FROM ${src.table} WHERE accountid = ? AND day >= ? AND day <= ? GROUP BY campaignid ORDER BY sp DESC LIMIT 5`).all(accountId, f30, to);
+      if (top.length) lines.push('- Top campaigns, last 30 days: ' + top.map(t => `${t.name || '(unnamed)'} $${Math.round(Number(t.sp) || 0).toLocaleString()} (${(Number(t.clk) || 0).toLocaleString()} clicks)`).join('; '));
+    });
+    if (!out.hasData) { out.promptBlock = '(no connected ad platform data on file yet: the client has not connected Meta or Google Ads in Train the Brain, Your connections)'; return out; }
+    out.promptBlock = 'CONNECTED AD PLATFORM ACTUALS (measured delivery pulled each morning from the client\'s own Meta and Google Ads accounts; these are billed figures, not plans):\n' + lines.join('\n');
+    logAccountDataAccess({ accountId, resource: 'account_meta_daily', action: 'read', actorType: 'ai_brain', actorId: 'ai_brain_reply' });
+  } catch (e) { out.promptBlock = '(connected ad platform data unavailable right now)'; }
+  return out;
+}
 function buildAccountMonthlyKpiContextForPrompt(accountId){
   const rows = db.prepare(`SELECT metricKey, label, fmt, period, value, yoyLabel FROM account_kpi_metrics WHERE accountId = ? ORDER BY metricKey ASC, period ASC`).all(accountId);
   logAccountDataAccess({ accountId, resource: 'account_kpi_metrics', action: 'read', actorType: 'ai_brain', actorId: 'ai_brain_reply', recordCount: rows.length });
@@ -24027,6 +24061,9 @@ const DATA_CATALOG = [
   { key: 'guest_bookings', label: 'Customer transaction file', table: 'account_guest_bookings', period: 'ym', dashboard: 'Strategy', grain: 'one row per customer line within a transaction', kind: 'manual', keywords: ['guest', 'booking', 'cruise', 'customer file', 'gross price', 'trip days', 'order size', 'units', 'daily revenue'], usedBy: ['forecast', 'ask'], status: 'current' },
   { key: 'leads', label: 'Leads by month', table: 'account_lead_counts', period: 'ym', dashboard: 'Media Science', grain: 'month by source, lead type and form', kind: 'manual', keywords: ['leads', 'forms', 'prospect', 'growth', 'value leads', 'cpl'], usedBy: ['forecast', 'ask', 'voice', 'brain dump'], status: 'current' },
   { key: 'digital', label: 'Digital actuals', table: 'account_digital_performance', period: 'ym', dashboard: 'Media Science', grain: 'month by channel, publisher and tactic', kind: 'manual', keywords: ['impressions', 'clicks', 'spend', 'channel', 'search', 'social', 'display'], usedBy: ['forecast', 'ask', 'voice'], status: 'current' },
+  { key: 'meta_daily', label: 'Meta ads, daily (connected)', table: 'account_meta_daily', period: null, dashboard: 'Media Science', grain: 'day by campaign, ad set and ad', kind: 'connected', keywords: ['meta', 'facebook', 'instagram', 'paid social', 'spend', 'impressions', 'reach', 'clicks', 'ctr', 'cpc'], usedBy: ['ask', 'voice', 'brain dump', 'ai brain'], status: 'current' },
+  { key: 'gads_daily', label: 'Google Ads, daily (connected)', table: 'account_gads_daily', period: null, dashboard: 'Media Science', grain: 'day by campaign', kind: 'connected', keywords: ['google ads', 'search', 'performance max', 'youtube', 'spend', 'clicks', 'conversions', 'cost per conversion'], usedBy: ['ask', 'voice', 'brain dump', 'ai brain'], status: 'current' },
+  { key: 'ga4_daily', label: 'Google Analytics 4, daily (connected)', table: 'account_ga4_daily', period: null, dashboard: 'Media Science', grain: 'day by channel group, source / medium and campaign', kind: 'connected', keywords: ['ga4', 'sessions', 'engaged sessions', 'users', 'key events', 'traffic'], usedBy: ['ask', 'voice', 'brain dump'], status: 'current' },
   { key: 'web_engagement', label: 'Website engagement', table: 'account_website_engagement', period: 'ym', dashboard: 'Media Science', grain: 'month by channel group', kind: 'manual', keywords: ['sessions', 'traffic', 'engagement', 'ga4'], usedBy: ['forecast', 'ask'], status: 'current' },
   { key: 'ga4_sources', label: 'GA4 sources and key events (weekly)', table: 'account_ga4_sources', period: null, dashboard: 'Media Science', grain: 'week by campaign and source / medium', kind: 'manual', keywords: ['ga4', 'utm', 'source medium', 'key events', 'sessions', 'engaged sessions'], usedBy: ['ask'], status: 'current' },
   { key: 'ga4_keyevents', label: 'GA4 key events by name (weekly)', table: 'account_ga4_keyevents', period: null, dashboard: 'Media Science', grain: 'week by source / medium and key event', kind: 'manual', keywords: ['ga4', 'key events', 'phone calls', 'form submissions'], usedBy: ['ask'], status: 'current' },
@@ -24176,6 +24213,11 @@ function buildTrainTheBrain(accountId){
       { label: 'Competitive positioning', done: yes(A('competitivePositioningApproved')), gain: 'Sets who you are measured against. Ongoing tracking lives in Strategy.', step: 'competitivePositioning' },
       { label: 'Facts the Brain can use', done: (() => { try { return db.prepare("SELECT COUNT(*) AS n FROM brain_facts WHERE accountId = ? AND status = 'active'").get(accountId).n > 0; } catch (e) { return false; } })(), gain: 'Confirmed facts about your brand, products and destinations. Answers to customer questions are written only from these.', step: 'brainFacts' },
       { label: 'Search keywords', done: (() => { try { return srchKeywordsForAccount(accountId).liveCount > 0; } catch (e) { return false; } })(), gain: 'The queries your customers use. Press releases and website copy are optimized toward them.', step: 'searchKeywords' } ] },
+    { key: 'connections', title: 'Your connections', minutes: 5, gain: 'Connect your ad and analytics accounts once and the Brain learns from your real spend, delivery and traffic every morning.', items: [
+      { label: 'Meta ads', done: (() => { try { return !!metaConnectionView(accountId).connected; } catch (e) { return false; } })(), gain: 'Daily spend, impressions, reach and clicks from Facebook and Instagram.', step: 'connectMeta' },
+      { label: 'Google Analytics 4', done: (() => { try { return !!googleConnectionView(accountId, 'ga4').connected || rowsOf('account_ga4_daily') > 0; } catch (e) { return false; } })(), gain: 'Daily sessions, engagement and key events by channel.', step: 'connectGa4' },
+      { label: 'Google Ads', done: (() => { try { return !!googleConnectionView(accountId, 'ads').connected; } catch (e) { return false; } })(), gain: 'Daily spend, clicks and conversions by campaign, including Performance Max.', step: 'connectGoogleAds' },
+      { label: 'Snowflake, The Trade Desk and other partners', done: integrationDone, gain: 'Guided setup for warehouse, programmatic and listening partners.', step: 'partnerIntegrations' } ] },
     { key: 'voice', title: 'Your voice', minutes: 6, gain: 'Lets the Brain write and score copy the way you sound.', items: [
       { label: 'Sample writings (two or three is enough)', done: samples >= 1, gain: samples ? `${samples} on file.` : 'Drop in an email, a brochure page or a speech.', step: 'brandWritingSamples' },
       { label: 'Approve the brand voice guide', done: yes(A('voiceApproved')), gain: 'The Brain drafts it from your samples; you approve it.', step: 'voice' },
@@ -24194,8 +24236,8 @@ function buildTrainTheBrain(accountId){
       { label: 'Digital performance', done: rowsOf('account_digital_performance') > 0, rows: rowsOf('account_digital_performance'), gain: 'Spend, impressions and clicks by channel, publisher and tactic.', step: 'digitalPerformance' },
       { label: 'Monthly KPI report', done: rowsOf('account_kpi_metrics') > 0, rows: rowsOf('account_kpi_metrics'), gain: 'Feeds the KPI grid and trend line on the CMO Dashboard.', step: 'kpiMetrics' },
       { label: 'Master UTM configuration', done: (() => { try { const a = db.prepare('SELECT utmMasterElementsJson FROM accounts WHERE accountId = ?').get(accountId); const j = a && a.utmMasterElementsJson ? JSON.parse(a.utmMasterElementsJson) : []; return Array.isArray(j) && j.length > 0; } catch (e) { return false; } })(), gain: 'One tracking-link standard for every campaign: up to 8 elements, plus Contact ID and GCLID.', step: 'utmConfig' },
-      { label: 'MMM data inputs', done: rowsOf('mmm_inputs') > 0, rows: rowsOf('mmm_inputs'), gain: 'Period-by-period spend, delivery and outcomes by category, ready for media mix modeling.', step: 'mmmInputs' },
-      { label: 'Connect a data source, or choose a path', done: integrationDone, gain: 'Snowflake, GA4, Meta, Google Ads or The Trade Desk.', step: 'partnerIntegrations' } ] },
+      { label: 'MMM data inputs', done: rowsOf('mmm_inputs') > 0, rows: rowsOf('mmm_inputs'), gain: 'Period-by-period spend, delivery and outcomes by category, ready for media mix modeling.', step: 'mmmInputs' } ] },
+
     { key: 'plan', title: 'Your plan', minutes: 4, gain: 'Gives the forecast the targets and costs it needs to test a plan.', items: [
       { label: 'Annual plan: baseline and targets', done: rowsOf('account_annual_plan') > 0, rows: rowsOf('account_annual_plan'), gain: 'What the year is calibrated on and what you aim for.', step: 'mediaplan' },
       { label: 'Prior-year results', done: rowsOf('account_year_results') > 0, rows: rowsOf('account_year_results'), gain: 'Last year\'s spend and results the plan is compared with.', step: 'yearResults' },
@@ -24822,6 +24864,7 @@ function voiceContextBundle(accountId, opts){
   blocks.push(`CAMPAIGNS BY STATUS: ${all.length ? all.map(x => `${x.status || 'unset'}=${x.n}`).join(', ') : 'none on file'}.`);
   blocks.push(`MOST URGENT (soonest assets due first):\n${urgent.length ? urgent.map(u => `- ${u.name} [${u.campaignCode || u.campaignId}] assets due ${u.assetsDue || '—'}, start ${u.startDate || '—'}, end ${u.endDate || '—'}, status ${u.status}, creative ${u.creativeDisposition || 'undecided'}`).join('\n') : '(no campaigns with due dates)'}`);
   try { blocks.push(buildAccountMonthlyKpiContextForPrompt(accountId).promptBlock); } catch (e){ blocks.push('(monthly KPI report unavailable)'); }
+  try { blocks.push(buildConnectedMediaContextForPrompt(accountId).promptBlock); } catch (e){ console.warn('[voice/ask] connected media context failed:', e.message); }
   try { blocks.push(dqContextBlock(accountId, o.question)); } catch (e){ console.warn('[voice/ask] transaction context failed:', e.message); }
   try { blocks.push(dqSetsContextBlock(accountId, o.question)); } catch (e){ console.warn('[voice/ask] uploaded data sets context failed:', e.message); }
   try { blocks.push(gscContextBlock(accountId, o.question)); } catch (e){ console.warn('[voice/ask] search context failed:', e.message); }
@@ -27161,6 +27204,13 @@ function pdBuildDaily(accountId, fromDay, toDay){
         if (sp[day] != null){ o.spend = (o.spend || 0) + sp[day]; o.basis.spend = 'allocated (' + pdAllocationRule(p.channel) + ') — planned budget, not billed'; }
       });
     });
+  // Paid media delivered by the connected ad platforms: measured daily spend, impressions, clicks (and conversions for Google Ads).
+  try {
+    db.prepare('SELECT day, SUM(impressions) AS i, SUM(spend) AS sp, SUM(clicks) AS c FROM account_meta_daily WHERE accountid = ? AND day >= ? AND day <= ? GROUP BY day').all(accountId, fromDay, toDay)
+      .forEach(r => { const o = get(r.day, 'Paid Social (Meta)', 'meta'); o.impressions = r.i; o.spend = r.sp; o.clicks = r.c; o.basis.impressions = 'measured (Meta Ads)'; o.basis.spend = 'measured (Meta Ads, billed account currency)'; o.basis.clicks = 'measured (Meta Ads)'; });
+    db.prepare('SELECT day, SUM(impressions) AS i, SUM(spend) AS sp, SUM(clicks) AS c, SUM(conversions) AS cv, SUM(conversionvalue) AS cvv FROM account_gads_daily WHERE accountid = ? AND day >= ? AND day <= ? GROUP BY day').all(accountId, fromDay, toDay)
+      .forEach(r => { const o = get(r.day, 'Paid Search (Google Ads)', 'google_ads'); o.impressions = r.i; o.spend = r.sp; o.clicks = r.c; o.conversions = r.cv; o.conversion_value = r.cvv; o.basis.impressions = 'measured (Google Ads)'; o.basis.spend = 'measured (Google Ads, billed account currency)'; o.basis.clicks = 'measured (Google Ads)'; o.basis.conversions = 'measured (Google Ads)'; });
+  } catch (e) { /* tables not created yet on a brand-new database */ }
   const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: PD_TZ });
   db.prepare('SELECT bookedAt, value FROM warehouse_bookings WHERE accountId = ?').all(accountId).forEach(b => {
     if (!b.bookedAt) return; const t = new Date(b.bookedAt); if (isNaN(t)) return;
@@ -44681,6 +44731,7 @@ Submit your response via the recommendation_dialogue_reply tool.`;
 - Target generation(s): ${audienceLabel || '(not set — assume a broad, general audience)'}
 - Net-worth / wealth tier(s): ${wealthLabel || '(not set — assume a general, mixed-income audience)'}`;
         const { promptBlock: monthlyKpiBlock } = buildAccountMonthlyKpiContextForPromptCached(campaign.accountId, timings);
+        const { promptBlock: connectedMediaBlock } = buildConnectedMediaContextForPrompt(campaign.accountId);
         const lessonsInfo = brainLessonsPromptBlock(campaign.accountId, campaignId); let lessonsBlock = lessonsInfo.block; brainLessonsMarkUsed(lessonsInfo.ids);
         try { const tf = confirmedTestFindingsBlock(campaign.accountId); if (tf) lessonsBlock = (lessonsBlock ? lessonsBlock + '\n\n' : '') + tf; } catch (e){}
         const priorNotes = Array.isArray(body.priorNotes) ? body.priorNotes.slice(-10) : [];
@@ -44776,7 +44827,9 @@ ${acctBudgetPerfBlock}
 
 ${segmentationBlock}
 
-${monthlyKpiBlock}${lessonsBlock ? '\n\n' + lessonsBlock : ''}`;
+${monthlyKpiBlock}
+
+${connectedMediaBlock}${lessonsBlock ? '\n\n' + lessonsBlock : ''}`;
         const turnBlock = `CONVERSATION SO FAR:
 ${priorText || '(nothing yet)'}
 
