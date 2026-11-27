@@ -26702,7 +26702,64 @@ createTableIfNeeded(`
 
 // Verilume's own system-user token (Meta Business Settings > System users, ads_read). One token for the whole platform; clients never see
 // or enter a token. A client shares their ad account with Verilume's Meta business as a partner, and this token reads it.
+ensureColumn('account_meta_connections', 'tokenexpiresat', 'TEXT');
 function metaSystemToken(){ const t = String(process.env.META_SYSTEM_USER_TOKEN || '').trim(); return t.length >= 20 ? t : null; }
+
+// "Connect with Meta": the client logs in to Meta, picks which ad accounts to share, and Meta hands Verilume a read-only (ads_read)
+// token for just those accounts. Nobody types an ID or a token. The token is sealed (AES-256-GCM, key META_TOKEN_KEY) and never returned.
+const META_APP_ID = String(process.env.META_APP_ID || '975169618745652').replace(/\D/g, '');
+function metaAppSecret(){ const t = String(process.env.META_APP_SECRET || '').trim(); return t.length >= 16 ? t : null; }
+function metaKeyBytes(){ const k = String(process.env.META_TOKEN_KEY || ''); return k.length >= 16 ? crypto.createHash('sha256').update(k).digest() : null; }
+function metaOauthReady(){ return !!(metaAppSecret() && metaKeyBytes()); }
+function metaSeal(plain){
+  const key = metaKeyBytes(); if (!key) throw new Error('META_TOKEN_KEY is not set');
+  const iv = crypto.randomBytes(12); const c = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const enc = Buffer.concat([c.update(String(plain), 'utf8'), c.final()]);
+  return 'v1.' + iv.toString('base64') + '.' + c.getAuthTag().toString('base64') + '.' + enc.toString('base64');
+}
+function metaOpen(sealed){
+  const key = metaKeyBytes(); if (!key || !sealed) return null;
+  try {
+    const [v, iv, tag, enc] = String(sealed).split('.'); if (v !== 'v1') return null;
+    const d = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'base64')); d.setAuthTag(Buffer.from(tag, 'base64'));
+    return Buffer.concat([d.update(Buffer.from(enc, 'base64')), d.final()]).toString('utf8');
+  } catch (e){ return null; }
+}
+function metaStateSign(accountId){
+  const key = metaKeyBytes(); if (!key) return null;
+  const body = Buffer.from(JSON.stringify({ a: accountId, e: Date.now() + 15 * 60 * 1000, n: crypto.randomBytes(8).toString('hex') })).toString('base64url');
+  return body + '.' + crypto.createHmac('sha256', key).update(body).digest('base64url');
+}
+function metaStateVerify(state){
+  const key = metaKeyBytes(); if (!key || !state) return null;
+  const [body, sig] = String(state).split('.'); if (!body || !sig) return null;
+  const want = crypto.createHmac('sha256', key).update(body).digest('base64url');
+  if (want.length !== sig.length || !crypto.timingSafeEqual(Buffer.from(want), Buffer.from(sig))) return null;
+  try { const o = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')); return o.e > Date.now() ? o.a : null; } catch (e){ return null; }
+}
+function metaRedirectUri(){ return (process.env.PUBLIC_BASE_URL || 'https://verilume.ai').replace(/\/+$/, '') + '/api/meta/oauth/callback'; }
+// The token a connection is read with: the client's own sealed token when they used Connect with Meta, else Verilume's partner token.
+function metaTokenFor(conn){
+  if (conn && conn.tokenenc){
+    if (conn.tokenexpiresat && conn.tokenexpiresat < new Date().toISOString()) return { token: null, expired: true };
+    const t = metaOpen(conn.tokenenc); return { token: t, expired: !t };
+  }
+  return { token: metaSystemToken(), expired: false };
+}
+async function metaPostForm(path, form){
+  const resp = await fetch('https://graph.facebook.com/' + META_GRAPH_VERSION + '/' + path, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(form).toString() });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || data.error){ const e = new Error((data.error && data.error.message) || ('Meta returned HTTP ' + resp.status)); e.metaCode = data.error && data.error.code; throw e; }
+  return data;
+}
+async function metaListAdAccounts(token){
+  const out = []; let page = await metaGraph('me/adaccounts', { fields: 'account_id,name,currency,timezone_name,account_status', limit: '100' }, token);
+  for (let i = 0; i < 20; i++){
+    (page.data || []).forEach(a => out.push({ id: String(a.account_id || '').replace(/^act_/, ''), name: a.name || null, currency: a.currency || null, timeZone: a.timezone_name || null, status: a.account_status }));
+    if (page.paging && page.paging.next) page = await metaGraph(page.paging.next, null, token); else break;
+  }
+  return out.filter(a => a.id);
+}
 function metaAdAccountId(v){ const d = String(v || '').replace(/^act_/i, '').replace(/\s+/g, ''); return /^\d{5,20}$/.test(d) ? d : null; }
 
 // One Graph API GET. The token goes in the Authorization header, never in the URL, so it cannot land in a log line.
@@ -26759,8 +26816,12 @@ function metaStoreRows(accountId, rows){
 async function metaPullAccount(accountId, forceBackfill){
   const conn = db.prepare('SELECT * FROM account_meta_connections WHERE accountid = ?').get(accountId);
   if (!conn) return { ok: false, reason: 'not_connected', message: 'No Meta ad account is connected.' };
-  const token = metaSystemToken();
-  if (!token) return { ok: false, reason: 'not_configured', message: 'Verilume\'s Meta connection is not set up on this server yet.' };
+  if (!conn.adaccountid) return { ok: false, reason: 'choose', message: 'Pick which Meta ad account to connect.' };
+  const tk = metaTokenFor(conn); const token = tk.token;
+  if (!token){
+    if (tk.expired){ db.prepare("UPDATE account_meta_connections SET status = 'token_invalid', lasterror = ?, updatedat = ? WHERE accountid = ?").run('The Meta login has expired. Reconnect with Meta.', new Date().toISOString(), accountId); return { ok: false, reason: 'token_invalid', message: 'The Meta login has expired.' }; }
+    return { ok: false, reason: 'not_configured', message: 'Verilume\'s Meta connection is not set up on this server yet.' };
+  }
   const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random();
   const today = pdToday(); const toDay = pdAddDays(today, -1);
   const backfill = !!forceBackfill || !conn.backfilldoneat;
@@ -26790,7 +26851,6 @@ async function metaPullAccount(accountId, forceBackfill){
 // Hourly look; each connected account is pulled once per Eastern day, after 5am Eastern.
 async function metaTick(){
   try { metaDemoRefresh(); } catch (e){ console.error('[meta-demo] refresh failed:', e && e.message); }
-  if (!metaSystemToken()) return;
   const hour = Number(new Intl.DateTimeFormat('en-US', { timeZone: PD_TZ, hour: '2-digit', hour12: false }).format(new Date()));
   if (hour < 5) return;
   const todayEt = pdToday();
@@ -26870,9 +26930,9 @@ function metaConnectionView(accountId){
   const lastRun = db.prepare('SELECT startedat, finishedat, status, fromday, today, rowsstored, message FROM meta_pull_runs WHERE accountid = ? ORDER BY startedat DESC LIMIT 1').get(accountId) || null;
   const coverage = db.prepare('SELECT MIN(day) AS first, MAX(day) AS last, COUNT(DISTINCT day) AS days, COUNT(*) AS rows FROM account_meta_daily WHERE accountid = ?').get(accountId);
   return {
-    configured: !!metaSystemToken(), partnerBusinessId: process.env.META_PARTNER_BUSINESS_ID ? String(process.env.META_PARTNER_BUSINESS_ID).replace(/\D/g, '') : null,
+    configured: metaOauthReady() || !!metaSystemToken(), oauthReady: metaOauthReady(), viaOauth: !!(c && c.tokenenc), choosing: !!(c && c.status === 'choose'), tokenExpiresAt: c ? c.tokenexpiresat : null, partnerBusinessId: process.env.META_PARTNER_BUSINESS_ID ? String(process.env.META_PARTNER_BUSINESS_ID).replace(/\D/g, '') : null,
     graphVersion: META_GRAPH_VERSION, historyMonths: 25, repullDays: META_REPULL_DAYS,
-    connected: !!c, demo: !!(c && c.status === 'demo'), status: c ? c.status : null,
+    connected: !!(c && c.adaccountid), demo: !!(c && c.status === 'demo'), status: c ? c.status : null,
     adAccountId: c ? c.adaccountid : null, accountName: c ? c.accountname : null, currency: c ? c.currency : null, timeZone: c ? c.timezonename : null,
     connectedAt: c ? c.connectedat : null, lastError: c ? c.lasterror : null,
     lastRun, coverage
@@ -40446,6 +40506,54 @@ Submit your response via the campaign_intake_turn tool.`;
       }
     }
 
+    // Connect with Meta (self-service). 1) start returns Meta's login URL; 2) Meta sends the browser back to the callback with a code;
+    // 3) Verilume swaps it for a long-lived read-only token, seals it, and either connects the one ad account or lets the client pick.
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'meta-oauth-start' && req.method === 'GET'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      if (!metaOauthReady()) return sendJson(res, 503, { error: 'Meta connections are being set up for your account. Verilume will let you know when you can connect.' });
+      const existing = db.prepare('SELECT status FROM account_meta_connections WHERE accountid = ?').get(accountId);
+      if (existing && existing.status === 'demo') return sendJson(res, 400, { error: 'This demo account uses sample Meta data.' });
+      const url = 'https://www.facebook.com/' + META_GRAPH_VERSION + '/dialog/oauth?' + new URLSearchParams({ client_id: META_APP_ID, redirect_uri: metaRedirectUri(), state: metaStateSign(accountId), scope: 'ads_read', response_type: 'code' }).toString();
+      return sendJson(res, 200, { url });
+    }
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'meta' && parts[2] === 'oauth' && parts[3] === 'callback' && req.method === 'GET'){
+      const q = new URL(req.url, 'http://x').searchParams;
+      const accountId = metaStateVerify(q.get('state'));
+      const back = (acct, result) => { res.writeHead(302, { Location: (process.env.PUBLIC_BASE_URL || 'https://verilume.ai').replace(/\/+$/, '') + '/portal.html?accountId=' + encodeURIComponent(acct || '') + '&meta=' + result }); res.end(); };
+      if (!accountId) { res.writeHead(400, { 'Content-Type': 'text/plain' }); return res.end('This Meta connection link expired. Go back to Verilume and press Connect with Meta again.'); }
+      if (q.get('error') || !q.get('code')) return back(accountId, 'denied');
+      try {
+        const short = await metaPostForm('oauth/access_token', { client_id: META_APP_ID, client_secret: metaAppSecret(), redirect_uri: metaRedirectUri(), code: q.get('code') });
+        const long = await metaPostForm('oauth/access_token', { grant_type: 'fb_exchange_token', client_id: META_APP_ID, client_secret: metaAppSecret(), fb_exchange_token: short.access_token });
+        const token = long.access_token || short.access_token;
+        const expires = new Date(Date.now() + (Number(long.expires_in || short.expires_in) || 60 * 86400) * 1000).toISOString();
+        const accts = await metaListAdAccounts(token);
+        const now = new Date().toISOString();
+        const one = accts.length === 1 ? accts[0] : null;
+        db.prepare(`INSERT INTO account_meta_connections (accountid, adaccountid, tokenenc, tokenlast4, status, accountname, currency, timezonename, connectedat, connectedby, lasterror, backfilldoneat, updatedat, tokenexpiresat)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL,?,?)
+          ON CONFLICT(accountid) DO UPDATE SET adaccountid=excluded.adaccountid, tokenenc=excluded.tokenenc, tokenlast4=excluded.tokenlast4, status=excluded.status, accountname=excluded.accountname,
+            currency=excluded.currency, timezonename=excluded.timezonename, connectedat=excluded.connectedat, lasterror=excluded.lasterror, tokenexpiresat=excluded.tokenexpiresat, updatedat=excluded.updatedat,
+            backfilldoneat=CASE WHEN account_meta_connections.adaccountid = excluded.adaccountid THEN account_meta_connections.backfilldoneat ELSE NULL END`)
+          .run(accountId, one ? one.id : '', metaSeal(token), null, one ? 'connected' : 'choose', one ? one.name : null, one ? one.currency : null, one ? one.timeZone : null, now, 'meta-login', accts.length ? null : 'No ad accounts were shared.', now, expires);
+        if (one) metaPullAccount(accountId, false).catch(e => console.error('[meta-daily] start failed:', accountId, e && e.message));
+        return back(accountId, accts.length === 0 ? 'none' : one ? 'connected' : 'choose');
+      } catch (e){
+        console.error('[meta-oauth] callback failed:', e && e.message);
+        return back(accountId, 'error');
+      }
+    }
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'meta-adaccounts' && req.method === 'GET'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const conn = db.prepare('SELECT * FROM account_meta_connections WHERE accountid = ?').get(accountId);
+      const tk = metaTokenFor(conn);
+      if (!conn || !conn.tokenenc || !tk.token) return sendJson(res, 200, { accounts: [], needsReconnect: !!(conn && conn.tokenenc) });
+      try { return sendJson(res, 200, { accounts: await metaListAdAccounts(tk.token) }); }
+      catch (e){ return sendJson(res, 200, { accounts: [], needsReconnect: e.metaCode === 190, error: 'Meta did not return your ad accounts. Try Connect with Meta again.' }); }
+    }
+
     // Meta Ads connection (read-only, ads_read): the client enters their ad account ID and a system-user token on Train the Brain.
     // The token is checked against Meta, sealed, and never returned. Disconnect removes the token; ?deleteData=1 also removes stored rows.
     if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'meta-connection' && (req.method === 'GET' || req.method === 'POST' || req.method === 'DELETE')){
@@ -40455,7 +40563,10 @@ Submit your response via the campaign_intake_turn tool.`;
       if (!account) return sendJson(res, 404, { error: 'account not found' });
       if (req.method === 'POST'){
         const body = await readBody(req).catch(() => ({})) || {};
-        const sysToken = metaSystemToken();
+        const prevConn = db.prepare('SELECT * FROM account_meta_connections WHERE accountid = ?').get(accountId);
+        const ownTok = prevConn && prevConn.tokenenc ? metaTokenFor(prevConn) : null;
+        if (ownTok && !ownTok.token) return sendJson(res, 400, { error: 'Your Meta login has expired. Press Connect with Meta again.' });
+        const sysToken = ownTok ? ownTok.token : metaSystemToken();
         if (!sysToken) return sendJson(res, 503, { error: 'Meta connections are not switched on for Verilume yet. Ask Verilume support to finish setup.' });
         const adId = metaAdAccountId(body.adAccountId);
         if (!adId) return sendJson(res, 400, { error: 'Enter the ad account ID as numbers only (it may start with act_).' });
@@ -40469,7 +40580,7 @@ Submit your response via the campaign_intake_turn tool.`;
         const now = new Date().toISOString();
         db.prepare(`INSERT INTO account_meta_connections (accountid, adaccountid, tokenenc, tokenlast4, status, accountname, currency, timezonename, connectedat, connectedby, lasterror, backfilldoneat, updatedat)
           VALUES (?,?,NULL,NULL,'connected',?,?,?,?,?,NULL,NULL,?)
-          ON CONFLICT(accountid) DO UPDATE SET adaccountid=excluded.adaccountid, tokenenc=NULL, tokenlast4=NULL, status='connected', accountname=excluded.accountname,
+          ON CONFLICT(accountid) DO UPDATE SET adaccountid=excluded.adaccountid, status='connected', accountname=excluded.accountname,
             currency=excluded.currency, timezonename=excluded.timezonename, connectedat=excluded.connectedat, connectedby=excluded.connectedby, lasterror=NULL,
             backfilldoneat=CASE WHEN account_meta_connections.adaccountid = excluded.adaccountid AND account_meta_connections.status != 'demo' THEN account_meta_connections.backfilldoneat ELSE NULL END, updatedat=excluded.updatedat`)
           .run(accountId, adId, info.name || null, info.currency || null, info.timezone_name || null, now, String(body.by || '').slice(0, 120), now);
@@ -40477,6 +40588,8 @@ Submit your response via the campaign_intake_turn tool.`;
       }
       if (req.method === 'DELETE'){
         const u = new URL(req.url, 'http://x');
+        const old = db.prepare('SELECT * FROM account_meta_connections WHERE accountid = ?').get(accountId);
+        if (old && old.tokenenc){ const t = metaOpen(old.tokenenc); if (t) fetch('https://graph.facebook.com/' + META_GRAPH_VERSION + '/me/permissions', { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + t } }).catch(() => {}); }
         db.prepare('DELETE FROM account_meta_connections WHERE accountid = ?').run(accountId);
         if (u.searchParams.get('deleteData') === '1') db.prepare('DELETE FROM account_meta_daily WHERE accountid = ?').run(accountId);
       }
