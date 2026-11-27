@@ -2459,6 +2459,9 @@
   .btn-secondary:hover{background:var(--paper-dim);}
   .btn-secondary:focus-visible{outline:2px solid var(--cx);outline-offset:2px;}
   .btn-secondary.danger{border-color:var(--advocacy);color:var(--advocacy);}
+  .cm-kpi .d{margin-top:4px;font-size:0.8125rem;}
+  .cm-kpi .cmp{margin-top:2px;font-size:0.75rem;color:var(--muted);}
+  .cm-range select,.cm-range input[type=date]{font-family:inherit;font-size:0.875rem;padding:7px 12px;border:1px solid var(--line);border-radius:12px;background:var(--white,#fff);color:var(--ink);}
 
   .cm-bar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:0 0 12px;}
   .cm-spacer{flex:1 1 auto;}
@@ -5634,11 +5637,14 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
         <button type="button" role="tab" id="cmTabMeta" onclick="cmLoad('meta')">Meta ads</button>
         <button type="button" role="tab" id="cmTabAds" onclick="cmLoad('ads')">Google Ads</button>
       </div>
-      <label class="cm-range">Show <select id="cmRange" onchange="cmLoad()"><option value="30">last 30 days</option><option value="90">last 90 days</option><option value="180">last 180 days</option><option value="365">last 12 months</option></select></label>
+      <label class="cm-range">Show <select id="cmRange" onchange="cmRangeChange()" aria-label="Period"><option value="ytd">YTD</option><option value="qtd">QTD</option><option value="mom">MTD</option><option value="wow">WoW</option><option value="yoy">YoY</option><option value="custom">Custom</option></select></label>
+      <span id="cmCustom" class="cm-range" style="display:none;gap:6px;"><input type="date" id="cmFrom" onchange="cmLoad()" aria-label="From"><input type="date" id="cmTo" onchange="cmLoad()" aria-label="To"></span>
+      <label class="cm-range">Compare <select id="cmCompare" onchange="cmLoad()" aria-label="Comparison"><option value="none">None</option><option value="prior">Prior period</option><option value="year">Same dates last year</option></select></label>
       <span class="cm-spacer"></span>
       <button type="button" class="btn-secondary" id="cmManage" onclick="cmManage()">Manage connection</button>
     </div>
-    <div id="cmStatus" class="hint" style="margin:0 0 14px;" aria-live="polite"></div>
+    <div id="cmStatus" class="hint" style="margin:0 0 6px;" aria-live="polite"></div>
+    <div id="cmRangeNote" class="hint" style="margin:0 0 14px;"></div>
     <div id="cmKpis" class="cm-kpis"></div>
     <div class="sk-card" style="margin-top:16px;"><div class="sk-card-head ink"><div class="htext"><h3>Daily spend</h3><div class="kicker" id="cmChartKicker"></div></div></div><div class="sk-card-body"><div id="cmChart"></div></div></div>
     <div class="sk-card" style="margin-top:16px;"><div class="sk-card-head ink"><div class="htext"><h3>By campaign</h3><div class="kicker">Largest spend first</div></div></div><div class="sk-card-body"><div id="cmCampaigns" style="overflow-x:auto;"></div></div></div>
@@ -9414,7 +9420,7 @@ function askChange(oldName,newName,rows,cb){
  var ov=document.createElement("div");ov.setAttribute("role","dialog");ov.setAttribute("aria-modal","true");ov.setAttribute("aria-label","Change Meta ad account");
  ov.style.cssText="position:fixed;inset:0;background:rgba(17,24,39,0.55);display:flex;align-items:center;justify-content:center;z-index:99999;padding:16px;";
  var box=document.createElement("div");box.style.cssText="background:var(--white,#fff);color:var(--ink,#1D1D1F);max-width:520px;width:100%;border-radius:16px;padding:22px 24px;box-shadow:0 16px 48px rgba(0,0,0,0.25);font-size:0.9rem;line-height:1.5;";
- box.innerHTML='<h3 style="margin:0 0 8px;font-size:1.05rem;">Change the Meta ad account?</h3><p style="margin:0 0 10px;">Verilume is reading <b>'+esc(oldName)+'</b> and has <b>'+Number(rows).toLocaleString()+'</b> days of its numbers stored. You are switching to <b>'+esc(newName)+'</b>. Only one Meta ad account can be connected at a time. What should happen to the stored numbers from the previous account?</p>'+
+ box.innerHTML='<h3 style="margin:0 0 8px;font-size:1.05rem;">Change the Meta ad account?</h3><p style="margin:0 0 10px;">Verilume is reading <b>'+esc(oldName)+'</b> and has <b>'+Number(rows).toLocaleString()+'</b> days of its numbers stored'+(rows?'':' (none so far)')+'. You are switching to <b>'+esc(newName)+'</b>. Only one Meta ad account can be connected at a time. What should happen to the stored numbers from the previous account?</p>'+
  '<div style="display:grid;gap:8px;margin:12px 0;"><button type="button" class="btn-primary" id="mcReplace" style="text-align:left;">Replace them (recommended)<br><span style="font-weight:400;font-size:0.8125rem;">Delete the previous account\'s numbers and load the new account\'s history, so dashboards and the Brain only see one account.</span></button>'+
  '<button type="button" class="btn-secondary" id="mcKeep" style="text-align:left;white-space:normal;">Keep them<br><span style="font-weight:400;font-size:0.8125rem;">Leave the previous numbers in place and add the new account\'s on top. Totals will combine both accounts.</span></button></div>'+
  '<div style="text-align:right;"><button type="button" class="btn-secondary" id="mcCancel">Cancel</button></div>';
@@ -9427,8 +9433,8 @@ window.metaConnPick=function(){var f=el("metaConnFlag"),b=el("metaConnPickBtn"),
  var chosen=sel.value;
  function go(clearOld){f.textContent="Connecting…";b.disabled=true;
   call("POST","meta-connection",{adAccountId:chosen,by:by,clearOld:clearOld===true}).then(function(v){render(v);f.textContent="Connected. The first pull has started and can take a few minutes.";setTimeout(loadRows,15000)}).catch(function(e){f.textContent=e.message||"Could not connect."}).then(function(){b.disabled=false})}
- if(lastV&&lastV.connected&&lastV.adAccountId&&String(lastV.adAccountId)!==String(chosen)&&lastV.coverage&&lastV.coverage.rows>0){
-  var opt=sel.options[sel.selectedIndex];askChange(lastV.accountName||("ad account "+lastV.adAccountId),opt?opt.text:chosen,lastV.coverage.days||lastV.coverage.rows,function(clear){go(clear)});return}
+ if(lastV&&lastV.connected&&lastV.adAccountId&&String(lastV.adAccountId)!==String(chosen)&&true){
+  var opt=sel.options[sel.selectedIndex];askChange(lastV.accountName||("ad account "+lastV.adAccountId),opt?opt.text:chosen,(lastV.coverage&&(lastV.coverage.days||lastV.coverage.rows))||0,function(clear){go(clear)});return}
  go(false)};
 window.metaConnDisconnect=function(del){var f=el("metaConnFlag");
  var ok=true;try{ok=window.confirm(del?"Disconnect Meta and delete all Meta numbers Verilume has stored for this account? This cannot be undone.":"Disconnect Meta? Numbers already stored stay on file, but no new data is pulled.")}catch(e){}
@@ -9523,27 +9529,35 @@ function status(view,key){
  var em="";if(!(c&&c.days)&&r&&r.status==="ok"){var m=r.message||"";em=m.indexOf("no_campaigns")===0?" Meta shows no campaigns in this ad account. If your ads run in a different account, use Manage connection and choose Change ad account.":m.indexOf("no_delivery")===0?" Meta returned no ad delivery for the period pulled. If your ads run in a different account, use Manage connection and choose Change ad account.":" No delivery numbers stored yet."}
  box.innerHTML="Connected to <b>"+esc(nm)+"</b> (ID "+esc(id)+(v.currency?", "+esc(v.currency):"")+")."+(r?" Last pull "+esc(dt(r.finishedat||r.startedat))+": "+(r.status==="ok"?"complete":r.status==="partial"?"partly complete":r.status==="running"?"running now":"failed")+".":" Waiting for the first pull.")+(c&&c.days?" "+c.days+" days stored ("+esc(c.first)+" to "+esc(c.last)+").":em);
 }
-function kpis(rows,key){
- var cu=rows[0]&&rows[0].currency,imp=sum(rows,"impressions"),sp=sum(rows,"spend"),clk=sum(rows,"clicks"),cv=sum(rows,"conversions");
- var t=[["Spend",money(sp,cu)],["Impressions",n0(imp)],["Clicks",n0(clk)],["CTR",imp?(clk/imp*100).toFixed(2)+"%":"–"],["Cost per click",clk&&sp?money(sp/clk,cu,2):"–"]];
- if(P[key].conv){t.push(["Conversions",n0(cv)]);t.push(["Cost per conversion",cv&&sp?money(sp/cv,cu,2):"–"])}
- el("cmKpis").innerHTML=t.map(function(x){return'<div class="cm-kpi"><div class="l">'+x[0]+'</div><div class="v">'+x[1]+'</div></div>'}).join("");
+var RNG=null,CMP=null;
+function delta(c,p,good){if(p==null||!p||c==null)return"";var d=(c-p)/Math.abs(p)*100;var cls=good==="neutral"||d===0?"neutral":(good==="down"?d<0:d>0)?"good":"bad";return'<span class="gpc-d '+cls+'">'+(d>0?"▲":d<0?"▼":"•")+" "+Math.abs(d).toFixed(1)+"%</span>"}
+function tot(rows){var imp=sum(rows,"impressions"),sp=sum(rows,"spend"),clk=sum(rows,"clicks"),cv=sum(rows,"conversions");return{imp:imp,sp:sp,clk:clk,cv:cv,ctr:imp?clk/imp*100:null,cpc:clk&&sp?sp/clk:null,cpa:cv&&sp?sp/cv:null}}
+function kpis(rows,key,prev){
+ var cu=rows[0]&&rows[0].currency||(prev&&prev[0]&&prev[0].currency),c=tot(rows),p=prev?tot(prev):null;
+ var t=[["Spend",money(c.sp,cu),p&&delta(c.sp,p.sp,"neutral")],["Impressions",n0(c.imp),p&&delta(c.imp,p.imp,"up")],["Clicks",n0(c.clk),p&&delta(c.clk,p.clk,"up")],["CTR",c.ctr==null?"–":c.ctr.toFixed(2)+"%",p&&delta(c.ctr,p.ctr,"up")],["Cost per click",c.cpc==null?"–":money(c.cpc,cu,2),p&&delta(c.cpc,p.cpc,"down")]];
+ if(P[key].conv){t.push(["Conversions",n0(c.cv),p&&delta(c.cv,p.cv,"up")]);t.push(["Cost per conversion",c.cpa==null?"–":money(c.cpa,cu,2),p&&delta(c.cpa,p.cpa,"down")])}
+ el("cmKpis").innerHTML=t.map(function(x){var pv="";if(p){var m={"Spend":money(p.sp,cu),"Impressions":n0(p.imp),"Clicks":n0(p.clk),"CTR":p.ctr==null?"–":p.ctr.toFixed(2)+"%","Cost per click":p.cpc==null?"–":money(p.cpc,cu,2),"Conversions":n0(p.cv),"Cost per conversion":p.cpa==null?"–":money(p.cpa,cu,2)};pv='<div class="cmp">Before: '+m[x[0]]+"</div>"}return'<div class="cm-kpi"><div class="l">'+x[0]+'</div><div class="v">'+x[1]+"</div>"+(x[2]?'<div class="d">'+x[2]+"</div>":"")+pv+"</div>"}).join("");
 }
-function chart(rows){
+function chart(rows,prev){
  var box=el("cmChart"),k=el("cmChartKicker");if(!box)return;
  if(!rows.length){box.innerHTML='<p class="hint">No days stored in this range yet.</p>';if(k)k.textContent="";return}
- var cu=rows[0].currency,W=720,H=190,L=44,B=24,T=8,R=6,n=rows.length,max=0;rows.forEach(function(r){max=Math.max(max,Number(r.spend)||0)});if(!max)max=1;
+ var cu=rows[0].currency,W=720,H=190,L=44,B=24,T=8,R=6,n=rows.length,max=0;rows.forEach(function(r){max=Math.max(max,Number(r.spend)||0)});
+ var pv=prev&&prev.length?prev.slice(0,n):null;if(pv)pv.forEach(function(r){max=Math.max(max,Number(r.spend)||0)});if(!max)max=1;
  var bw=(W-L-R)/n,gap=Math.min(2,bw*0.2),out='<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Daily spend" style="max-width:100%;height:auto;display:block;">';
  [0,0.5,1].forEach(function(f){var y=T+(H-T-B)*(1-f);out+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y+'" y2="'+y+'" stroke="var(--line)" stroke-width="1"/><text x="'+(L-6)+'" y="'+(y+4)+'" font-size="10" text-anchor="end" fill="var(--muted)">'+esc(money(max*f,cu))+'</text>'});
  rows.forEach(function(r,i){var h=(H-T-B)*((Number(r.spend)||0)/max),x=L+i*bw;out+='<rect class="cm-bar-rect" x="'+(x+gap/2).toFixed(1)+'" y="'+(H-B-h).toFixed(1)+'" width="'+Math.max(1,bw-gap).toFixed(1)+'" height="'+Math.max(0,h).toFixed(1)+'" rx="2"><title>'+esc(r.day)+": "+esc(money(r.spend,cu,2))+"</title></rect>"});
+ if(pv&&pv.length){var pts=pv.map(function(r,i){return(L+i*bw+bw/2).toFixed(1)+","+(H-B-(H-T-B)*((Number(r.spend)||0)/max)).toFixed(1)}).join(" ");out+='<polyline points="'+pts+'" fill="none" stroke="var(--muted)" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round"/>'}
  out+='<text x="'+L+'" y="'+(H-6)+'" font-size="10" fill="var(--muted)">'+esc(rows[0].day)+'</text><text x="'+(W-R)+'" y="'+(H-6)+'" font-size="10" text-anchor="end" fill="var(--muted)">'+esc(rows[n-1].day)+'</text></svg>';
+ if(pv&&pv.length)out+='<div class="hint" style="margin-top:6px;"><span style="display:inline-block;width:12px;height:10px;background:var(--cx);border-radius:2px;vertical-align:middle;"></span> This period &nbsp; <span style="display:inline-block;width:18px;border-top:2px dashed var(--muted);vertical-align:middle;"></span> Comparison period (matched day by day)</div>';
  box.innerHTML=out;if(k)k.textContent=rows[0].day+" to "+rows[n-1].day;
 }
 function tbl(head,body){return'<table class="cm-tbl"><thead><tr>'+head.map(function(h){return"<th>"+h+"</th>"}).join("")+"</tr></thead><tbody>"+body+"</tbody></table>"}
-function campaigns(rows,key){
+function campaigns(rows,key,prev){
  var box=el("cmCampaigns");if(!rows.length){box.innerHTML='<p class="hint">No campaigns in this range yet.</p>';return}
- var head=["Campaign","Spend","Impressions","Clicks","CTR"].concat(P[key].conv?["Conversions"]:[]);
- box.innerHTML=tbl(head,rows.slice(0,50).map(function(r){var imp=Number(r.impressions)||0,clk=Number(r.clicks)||0;return"<tr><td>"+esc(r.campaignname||"(unnamed)")+"</td><td>"+money(r.spend,r.currency,2)+"</td><td>"+n0(imp)+"</td><td>"+n0(clk)+"</td><td>"+(imp?(clk/imp*100).toFixed(2)+"%":"–")+"</td>"+(P[key].conv?"<td>"+n0(r.conversions)+"</td>":"")+"</tr>"}).join(""));
+ var pm={};if(prev)prev.forEach(function(r){pm[r.campaignid]=r});
+ var head=["Campaign","Spend"].concat(prev?["Spend before","Change"]:[]).concat(["Impressions","Clicks","CTR"]).concat(P[key].conv?["Conversions"]:[]);
+ box.innerHTML=tbl(head,rows.slice(0,50).map(function(r){var imp=Number(r.impressions)||0,clk=Number(r.clicks)||0,q=pm[r.campaignid];
+  return"<tr><td>"+esc(r.campaignname||"(unnamed)")+"</td><td>"+money(r.spend,r.currency,2)+"</td>"+(prev?"<td>"+(q?money(q.spend,q.currency,2):"–")+"</td><td>"+(q?delta(Number(r.spend)||0,Number(q.spend)||0,"neutral")||"–":"New")+"</td>":"")+"<td>"+n0(imp)+"</td><td>"+n0(clk)+"</td><td>"+(imp?(clk/imp*100).toFixed(2)+"%":"–")+"</td>"+(P[key].conv?"<td>"+n0(r.conversions)+"</td>":"")+"</tr>"}).join(""));
 }
 function days(rows,key){
  var box=el("cmDays");if(!rows.length){box.innerHTML='<p class="hint">No days stored in this range yet.</p>';return}
@@ -9551,15 +9565,26 @@ function days(rows,key){
  box.innerHTML=tbl(head,rows.slice().reverse().slice(0,60).map(function(r){var imp=Number(r.impressions)||0,clk=Number(r.clicks)||0;return"<tr><td>"+esc(r.day)+"</td><td>"+money(r.spend,r.currency,2)+"</td><td>"+n0(imp)+"</td><td>"+n0(clk)+"</td><td>"+(imp?(clk/imp*100).toFixed(2)+"%":"–")+"</td>"+(P[key].conv?"<td>"+n0(r.conversions)+"</td>":"")+"</tr>"}).join(""));
 }
 window.cmManage=function(){goToStep("partnerIntegrations",cur)};
+window.cmRangeChange=function(){var c=(el("cmRange")||{}).value==="custom";var b=el("cmCustom");if(b)b.style.display=c?"inline-flex":"none";if(!c||((el("cmFrom")||{}).value&&(el("cmTo")||{}).value))cmLoad()};
 window.cmLoad=function(key){
  if(key==="meta"||key==="ads")cur=key;tabs();var mine=++seq;
  var ti=el("cmTitle");if(ti)ti.textContent=P[cur].name+" results";
  if(!acct()||!tok())return;
- var n=Number((el("cmRange")||{}).value)||30,q="?from="+iso(n)+"&to="+iso(1),sep=cur==="ads"?"&":"&";
+ var preset=(el("cmRange")||{}).value||"ytd",mode=(el("cmCompare")||{}).value||"none";
+ var rq="media-range?preset="+encodeURIComponent(preset);
+ if(preset==="custom"){var f=(el("cmFrom")||{}).value,t=(el("cmTo")||{}).value;if(!f||!t||t<f){var nb=el("cmRangeNote");if(nb)nb.textContent="Pick a start and end date.";return}rq+="&from="+f+"&to="+t}
  ["cmKpis","cmChart","cmCampaigns","cmDays"].forEach(function(i){var b=el(i);if(b)b.innerHTML=i==="cmKpis"?"":'<p class="hint">Loading…</p>'});
- Promise.all([get(P[cur].daily+q+"&by=day"),get(P[cur].daily+q+"&by=campaign")]).then(function(r){
-  if(mine!==seq)return;var d=r[0],c=r[1],rows=d.rows||[];
-  status(d.view,cur);kpis(rows,cur);chart(rows);campaigns(c.rows||[],cur);days(rows,cur);
+ get(rq).then(function(R){
+  if(mine!==seq)return;RNG=R;
+  var yo=el("cmCompare")?el("cmCompare").querySelector('option[value="year"]'):null;if(yo){yo.hidden=!!R.sameAsYear;yo.disabled=!!R.sameAsYear;if(R.sameAsYear&&mode==="year"){mode="prior";el("cmCompare").value="prior"}}
+  var q="?from="+R.from+"&to="+R.through,cf=mode==="prior"?R.compFrom:mode==="year"?R.yagoFrom:null,ct=mode==="prior"?R.compThrough:mode==="year"?R.yagoThrough:null,cl=mode==="prior"?R.compLabel:mode==="year"?R.yagoLabel:"";
+  var jobs=[get(P[cur].daily+q+"&by=day"),get(P[cur].daily+q+"&by=campaign")];
+  if(cf){var cq="?from="+cf+"&to="+ct;jobs.push(get(P[cur].daily+cq+"&by=day"),get(P[cur].daily+cq+"&by=campaign"))}
+  return Promise.all(jobs).then(function(r){
+   if(mine!==seq)return;var d=r[0],c=r[1],rows=d.rows||[],pd=cf?(r[2].rows||[]):null,pc=cf?(r[3].rows||[]):null;
+   var nb=el("cmRangeNote");if(nb)nb.textContent=R.label+(cl?" · "+cl:"")+(cf&&!(pd&&pd.length)?" · No stored numbers for the comparison period.":"");
+   status(d.view,cur);kpis(rows,cur,pd&&pd.length?pd:null);chart(rows,pd);campaigns(c.rows||[],cur,pc&&pc.length?pc:null);days(rows,cur);
+  });
  }).catch(function(){if(mine!==seq)return;el("cmStatus").textContent="Could not load these numbers. Try again shortly.";["cmChart","cmCampaigns","cmDays"].forEach(function(i){el(i).innerHTML=""})});
 };
 /* Live status inside Train the Brain, Your connections */

@@ -41083,6 +41083,26 @@ Submit your response via the campaign_intake_turn tool.`;
       }
       return sendJson(res, 200, metaConnectionView(accountId));
     }
+    // Standard reporting periods for the connected ad data page: the same resolver every reporting card uses (gpResolveRange),
+    // trimmed to the last stored day (yesterday) so a comparison never sets a full period against a partial one.
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'media-range' && req.method === 'GET'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const u = new URL(req.url, 'http://x');
+      const R = gpResolveRange({ preset: u.searchParams.get('preset') || 'ytd', from: u.searchParams.get('from'), to: u.searchParams.get('to') });
+      const yday = pdAddDays(pdToday(), -1);
+      let through = R.through, compThrough = R.compThrough, trimmed = 0;
+      if (through > yday){ trimmed = pdDaysBetween(yday, through); through = yday; compThrough = pdAddDays(compThrough, -trimmed); }
+      if (through < R.from){ through = R.from; compThrough = R.compFrom; }
+      const yago = { from: dmShiftYear(R.from, -1), through: dmShiftYear(through, -1) };
+      return sendJson(res, 200, {
+        preset: R.preset, from: R.from, through, name: R.name, label: R.name + ': ' + dmFmt(R.from) + ' to ' + dmFmt(through),
+        compFrom: R.compFrom, compThrough, compLabel: 'Compared with ' + R.compLabel.replace(/^Compared with /, '').replace(/: .*$/, '') + ': ' + dmFmt(R.compFrom) + ' to ' + dmFmt(compThrough),
+        yagoFrom: yago.from, yagoThrough: yago.through, yagoLabel: 'Compared with the same dates last year: ' + dmFmt(yago.from) + ' to ' + dmFmt(yago.through),
+        sameAsYear: R.compFrom === yago.from,
+        periods: PERIOD_REGISTRY.map(p => ({ key: p.key, label: p.label }))
+      });
+    }
     // Stored Meta delivery numbers. by=day (default) | campaign | ad. Reach is only returned at ad level — it cannot be summed.
     if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'meta-daily' && req.method === 'GET'){
       const accountId = decodeURIComponent(parts[2]);
