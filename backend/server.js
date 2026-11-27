@@ -24282,7 +24282,14 @@ function buildTrainTheBrain(accountId){
     return { key: c.key, label: c.label, dashboard: c.dashboard, grain: c.grain, kind: c.kind, keywords: c.keywords, usedBy: c.usedBy, status: c.status, rows, latest };
   });
   let uncataloged = [];
-  try { (catalogCoverage() || []).forEach(t => { const n = cnt(`SELECT COUNT(*) AS n FROM ${t} WHERE accountId = ?`, accountId); if (n) uncataloged.push({ table: t, rows: n }); }); } catch (e) {}
+  // One count per table in the database: slow on Postgres (several seconds), and it barely changes. Keep it for ten minutes per account.
+  global.__ttbUncat = global.__ttbUncat || new Map();
+  const _uc = global.__ttbUncat.get(accountId);
+  if (_uc && Date.now() - _uc.t < 600000) uncataloged = _uc.v;
+  else {
+    try { (catalogCoverage() || []).forEach(t => { const n = cnt(`SELECT COUNT(*) AS n FROM ${t} WHERE accountId = ?`, accountId); if (n) uncataloged.push({ table: t, rows: n }); }); } catch (e) {}
+    global.__ttbUncat.set(accountId, { t: Date.now(), v: uncataloged });
+  }
   const mk = getAccountMarket(accountId);
   const profile = { industry: A('industry') || null, company: A('company') || null, market: mk };
   return { profile, uncataloged, setup: { steps, remainingMinutes, doneCount: steps.filter(s => s.done).length, total: steps.length }, learnings, consumed, syncedAt: A('analyticsSnowflakeLastSyncAt') || null };
@@ -39738,7 +39745,15 @@ async function handleRequestInner(req, res) {
     if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'train-the-brain' && req.method === 'GET'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
-      try { return sendJson(res, 200, buildTrainTheBrain(accountId)); }
+      try {
+        global.__ttbCache = global.__ttbCache || new Map();
+        const fresh = new URL(req.url, 'http://x').searchParams.get('fresh') === '1';
+        const hit = global.__ttbCache.get(accountId);
+        if (!fresh && hit && Date.now() - hit.t < 20000) return sendJson(res, 200, hit.v);
+        const v = buildTrainTheBrain(accountId);
+        global.__ttbCache.set(accountId, { t: Date.now(), v });
+        return sendJson(res, 200, v);
+      }
       catch (e){ console.warn('[train-the-brain] failed:', e.message); return sendJson(res, 500, { error: 'could not read Train the Brain', detail: String(e.message || e).slice(0, 300) }); }
     }
 
