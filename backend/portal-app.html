@@ -2455,11 +2455,10 @@
   .adbt-stats span{font-size:0.6875rem;color:var(--muted);}
   .ask-dock-badge{position:absolute;right:0;top:0;min-width:18px;height:18px;box-sizing:border-box;border-radius:9px;background:#D9480F;color:#fff;font-size:0.6875rem;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 4px;border:2px solid #fff;}
 
-  .btn-row .btn-secondary,.sk-card .btn-secondary{font-family:inherit;display:inline-block;padding:8px 18px;font-size:0.8125rem;font-weight:700;line-height:1.2;border-radius:999px;border:1px solid var(--cx);background:transparent;color:var(--cx);cursor:pointer;white-space:nowrap;transition:filter var(--dur-fast) var(--ease),background var(--dur-fast) var(--ease);}
-  .btn-row .btn-secondary:hover,.sk-card .btn-secondary:hover{background:var(--paper-dim);}
-  .btn-row .btn-secondary:focus-visible,.sk-card .btn-secondary:focus-visible{outline:2px solid var(--cx);outline-offset:2px;}
-  .btn-row .btn-secondary.danger,.sk-card .btn-secondary.danger{border-color:var(--advocacy);color:var(--advocacy);}
-  .btn-row .btn-secondary.danger:hover,.sk-card .btn-secondary.danger:hover{background:var(--paper-dim);}
+  .btn-secondary{font-family:inherit;display:inline-block;padding:8px 18px;font-size:0.8125rem;font-weight:700;line-height:1.2;border-radius:999px;border:1px solid var(--cx);background:transparent;color:var(--cx);cursor:pointer;white-space:nowrap;transition:background var(--dur-fast) var(--ease);}
+  .btn-secondary:hover{background:var(--paper-dim);}
+  .btn-secondary:focus-visible{outline:2px solid var(--cx);outline-offset:2px;}
+  .btn-secondary.danger{border-color:var(--advocacy);color:var(--advocacy);}
 
   .cm-bar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:0 0 12px;}
   .cm-spacer{flex:1 1 auto;}
@@ -9384,6 +9383,7 @@ function patchChips(v){
   var txt=v&&v.demo?"Demo data":v&&v.choosing?"Almost done — choose an ad account":v&&v.connected?(v.status==="connected"?"Connected — live data flowing":"Connected — needs attention"):"Not connected yet";
   p.textContent=txt;p.classList.toggle("is-connected",!!(v&&v.connected&&(v.status==="connected"||v.demo)))})}
 var lastV=null;
+function emptyNote(v){var r=v&&v.lastRun,m=r&&r.message||"";if(m.indexOf("no_campaigns")===0)return" Meta shows no campaigns in this ad account. If your ads run in a different account, press Change ad account.";if(m.indexOf("no_delivery")===0)return" Meta returned no ad delivery for the period pulled. If your ads run in a different account, press Change ad account.";return""}
 function render(v){
  lastV=v;var st=el("metaConnState"),form=el("metaConnForm"),act=el("metaConnActions"),pick=el("metaConnPick");if(!st)return;
  patchChips(v);if(pick)pick.style.display="none";
@@ -9399,7 +9399,7 @@ function render(v){
  var r=v.lastRun,cov=v.coverage;
  if(r)line+=" "+(r.status==="running"?"First pull running now. Longer histories can take a few minutes.":"Last pull "+esc(fmt(r.finishedat||r.startedat))+": "+(r.status==="ok"?"complete":r.status==="partial"?"partly complete":"failed")+".");
  else line+=" Waiting for the first pull.";
- if(cov&&cov.days)line+=" "+cov.days+" days stored ("+esc(cov.first)+" to "+esc(cov.last)+").";
+ if(cov&&cov.days)line+=" "+cov.days+" days stored ("+esc(cov.first)+" to "+esc(cov.last)+").";else if(r&&r.status==="ok")line+=emptyNote(v)||" No delivery numbers stored yet.";
  st.innerHTML=line}
 function loadRows(){call("GET","meta-daily?by=day").then(function(d){render(d.view);renderTable(d)}).catch(function(){})}
 window.metaConnLoad=function(){if(!acct()||!tok()||!el("metaConnCard"))return;call("GET","meta-connection").then(function(v){render(v);if(v.connected)loadRows()}).catch(function(){var f=el("metaConnFlag");if(f)f.textContent="Could not load the Meta connection. Try again shortly."})};
@@ -9520,7 +9520,8 @@ function status(view,key){
  if(!v.connected){box.innerHTML="Not connected yet. <a style=\"cursor:pointer;text-decoration:underline;\" onclick=\"goToStep('partnerIntegrations','"+key+"')\">Connect "+esc(P[key].name)+"</a> to see your daily numbers here.";return}
  var nm=key==="meta"?(v.accountName||("ad account "+v.adAccountId)):(v.resourceName||("account "+v.resourceId));
  var id=key==="meta"?v.adAccountId:v.resourceId;var r=v.lastRun,c=v.coverage;
- box.innerHTML="Connected to <b>"+esc(nm)+"</b> (ID "+esc(id)+(v.currency?", "+esc(v.currency):"")+")."+(r?" Last pull "+esc(dt(r.finishedat||r.startedat))+": "+(r.status==="ok"?"complete":r.status==="partial"?"partly complete":r.status==="running"?"running now":"failed")+".":" Waiting for the first pull.")+(c&&c.days?" "+c.days+" days stored ("+esc(c.first)+" to "+esc(c.last)+").":"");
+ var em="";if(!(c&&c.days)&&r&&r.status==="ok"){var m=r.message||"";em=m.indexOf("no_campaigns")===0?" Meta shows no campaigns in this ad account. If your ads run in a different account, use Manage connection and choose Change ad account.":m.indexOf("no_delivery")===0?" Meta returned no ad delivery for the period pulled. If your ads run in a different account, use Manage connection and choose Change ad account.":" No delivery numbers stored yet."}
+ box.innerHTML="Connected to <b>"+esc(nm)+"</b> (ID "+esc(id)+(v.currency?", "+esc(v.currency):"")+")."+(r?" Last pull "+esc(dt(r.finishedat||r.startedat))+": "+(r.status==="ok"?"complete":r.status==="partial"?"partly complete":r.status==="running"?"running now":"failed")+".":" Waiting for the first pull.")+(c&&c.days?" "+c.days+" days stored ("+esc(c.first)+" to "+esc(c.last)+").":em);
 }
 function kpis(rows,key){
  var cu=rows[0]&&rows[0].currency,imp=sum(rows,"impressions"),sp=sum(rows,"spend"),clk=sum(rows,"clicks"),cv=sum(rows,"conversions");

@@ -26961,8 +26961,15 @@ async function metaPullAccount(accountId, forceBackfill){
     db.prepare('UPDATE account_meta_connections SET status = ?, lasterror = ?, updatedat = ? WHERE accountid = ?').run(reason, String(e.message).slice(0, 300), new Date().toISOString(), accountId);
   }
   const status = failed ? (stored ? 'partial' : 'failed') : 'ok';
+  let okMsg = backfill ? 'history + latest' : 'latest ' + META_REPULL_DAYS + ' days';
+  if (!failed && !stored){
+    // Nothing came back: say whether this ad account has any campaigns at all, so the client knows if it is the wrong account.
+    let hasCampaigns = null;
+    try { const cp = await metaGraph('act_' + conn.adaccountid + '/campaigns', { fields: 'id', limit: '1' }, token); hasCampaigns = !!(cp.data && cp.data.length); } catch (e) {}
+    okMsg = hasCampaigns === false ? 'no_campaigns: this ad account has no campaigns' : 'no_delivery: Meta returned no ad delivery for this period';
+  }
   db.prepare('UPDATE meta_pull_runs SET status=?, finishedat=?, rowsstored=?, message=? WHERE id=?')
-    .run(status, new Date().toISOString(), stored, failed ? String(failed.message).slice(0, 300) : (backfill ? 'history + latest' : 'latest ' + META_REPULL_DAYS + ' days'), id);
+    .run(status, new Date().toISOString(), stored, failed ? String(failed.message).slice(0, 300) : okMsg, id);
   return failed ? { ok: false, stored, reason: 'error', message: failed.message } : { ok: true, stored };
 }
 
